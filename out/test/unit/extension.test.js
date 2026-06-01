@@ -1,0 +1,362 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+const assert_1 = require("assert");
+const ws_1 = require("ws");
+const vscodeMock = __importStar(require("./mocks/vscode"));
+const extension_1 = require("../../extension");
+const helpers_1 = require("./helpers");
+const { _reset, _state, _setConfig, _setWorkspaceFolders, _triggerConfigChange, Uri, } = vscodeMock;
+function makeContext() {
+    return { subscriptions: [] };
+}
+function disposeAll(ctx) {
+    for (const d of ctx.subscriptions) {
+        try {
+            d.dispose();
+        }
+        catch {
+            // ignore
+        }
+    }
+    ctx.subscriptions.length = 0;
+}
+suite('extension activate()', () => {
+    setup(() => {
+        _reset();
+    });
+    test('registers every contributed command', () => {
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        const expected = [
+            'bitburnerSync.startServer',
+            'bitburnerSync.stopServer',
+            'bitburnerSync.toggleServer',
+            'bitburnerSync.syncFile',
+            'bitburnerSync.syncAll',
+            'bitburnerSync.getDefinitions',
+            'bitburnerSync.downloadAll',
+        ];
+        for (const name of expected) {
+            assert_1.strict.ok(_state.commands.has(name), `expected command ${name} to be registered`);
+        }
+        disposeAll(ctx);
+    });
+    test('creates the Bitburner Sync output channel and status bar', () => {
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        assert_1.strict.equal(_state.outputChannels[0].name, 'Bitburner Sync');
+        assert_1.strict.equal(_state.statusBarItems.length, 1);
+        disposeAll(ctx);
+    });
+    test('syncFile command warns when there is no active editor', async () => {
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        await vscodeMock.commands.executeCommand('bitburnerSync.syncFile');
+        const warnings = _state.notifications.filter(n => n.kind === 'warning');
+        assert_1.strict.equal(warnings.length, 1);
+        assert_1.strict.match(warnings[0].message, /No active file/);
+        disposeAll(ctx);
+    });
+    test('syncFile command warns when not connected, even if there is an active editor', async () => {
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        _setWorkspaceFolders(['/workspace']);
+        _state.activeTextEditor = { document: { uri: Uri.file('/workspace/a.js') } };
+        await vscodeMock.commands.executeCommand('bitburnerSync.syncFile');
+        const warnings = _state.notifications.filter(n => n.kind === 'warning');
+        assert_1.strict.equal(warnings.length, 1);
+        assert_1.strict.match(warnings[0].message, /Not connected/);
+        disposeAll(ctx);
+    });
+    test('syncAll, getDefinitions, and downloadAll all warn when not connected', async () => {
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        await vscodeMock.commands.executeCommand('bitburnerSync.syncAll');
+        await vscodeMock.commands.executeCommand('bitburnerSync.getDefinitions');
+        await vscodeMock.commands.executeCommand('bitburnerSync.downloadAll');
+        const warnings = _state.notifications.filter(n => n.kind === 'warning');
+        assert_1.strict.equal(warnings.length, 3);
+        for (const w of warnings) {
+            assert_1.strict.match(w.message, /Not connected/);
+        }
+        disposeAll(ctx);
+    });
+    test('does not auto-start the WebSocket server when autoStart is false (default)', () => {
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        // Status bar should remain in stopped state because the ws server never started.
+        const item = _state.statusBarItems[0];
+        assert_1.strict.match(item.text, /Bitburner: Off/);
+        disposeAll(ctx);
+    });
+    test('subscribes to configuration changes', () => {
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        assert_1.strict.equal(_state.onConfigChangeListeners.length, 1);
+        disposeAll(ctx);
+    });
+    test('deactivate() is a no-op that does not throw', () => {
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        disposeAll(ctx);
+        (0, extension_1.deactivate)();
+    });
+    test('warns when activated in a multi-root workspace and names the folder being used', () => {
+        _setWorkspaceFolders(['/project-a', '/project-b', '/project-c']);
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        const multi = _state.notifications.find(n => n.kind === 'warning' && /multi-root workspace/i.test(n.message));
+        assert_1.strict.ok(multi, `expected a multi-root warning, got: ${JSON.stringify(_state.notifications)}`);
+        // Mentions the count and the first folder's path
+        assert_1.strict.match(multi.message, /3 folders/);
+        assert_1.strict.match(multi.message, /project-a/);
+        // The other folders should NOT appear by path in the warning
+        assert_1.strict.ok(!/project-b/.test(multi.message), `did not expect other folders in warning: ${multi.message}`);
+        // Same message also went to the output channel
+        const channelLogged = _state.outputChannels[0].lines.some(l => /multi-root workspace/i.test(l));
+        assert_1.strict.ok(channelLogged, 'expected the multi-root warning to also appear in the output channel');
+        disposeAll(ctx);
+    });
+    test('does not warn for a single-folder workspace', () => {
+        _setWorkspaceFolders(['/only-one']);
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        const multi = _state.notifications.find(n => n.kind === 'warning' && /multi-root workspace/i.test(n.message));
+        assert_1.strict.equal(multi, undefined, `unexpected multi-root warning: ${JSON.stringify(multi)}`);
+        disposeAll(ctx);
+    });
+    test('does not warn when no workspace folders are open', () => {
+        // _reset() already left workspaceFolders undefined
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        const multi = _state.notifications.find(n => n.kind === 'warning' && /multi-root workspace/i.test(n.message));
+        assert_1.strict.equal(multi, undefined, `unexpected multi-root warning: ${JSON.stringify(multi)}`);
+        disposeAll(ctx);
+    });
+    test('stopServer command shows a confirmation notification', async () => {
+        // Even when not running, stopServer logs a stopped notification.
+        // Use a configured target server so the engine has well-defined behavior.
+        _setConfig('bitburnerSync', 'targetServer', 'home');
+        const ctx = makeContext();
+        (0, extension_1.activate)(ctx);
+        await vscodeMock.commands.executeCommand('bitburnerSync.stopServer');
+        const info = _state.notifications.filter(n => n.kind === 'info');
+        assert_1.strict.ok(info.some(n => /sync server stopped/i.test(n.message)));
+        disposeAll(ctx);
+    });
+    suite('config-change restart', () => {
+        async function waitForLogLine(re, timeoutMs = 1000) {
+            const channel = _state.outputChannels[0];
+            const deadline = Date.now() + timeoutMs;
+            while (Date.now() < deadline) {
+                if (channel.lines.some(l => re.test(l))) {
+                    return true;
+                }
+                await (0, helpers_1.waitMs)(20);
+            }
+            return false;
+        }
+        test('restarts the server on any bitburnerSync.* change when running, not just port', async () => {
+            _setWorkspaceFolders(['/workspace']);
+            _setConfig('bitburnerSync', 'port', 0); // OS-assigned free port
+            const ctx = makeContext();
+            (0, extension_1.activate)(ctx);
+            await vscodeMock.commands.executeCommand('bitburnerSync.startServer');
+            // Trigger a non-port config change — this used to be ignored.
+            _triggerConfigChange('bitburnerSync.syncDirectory');
+            const sawRestart = await waitForLogLine(/Configuration changed, restarting/i);
+            assert_1.strict.ok(sawRestart, `expected restart log line after syncDirectory change, got: ${JSON.stringify(_state.outputChannels[0].lines)}`);
+            await vscodeMock.commands.executeCommand('bitburnerSync.stopServer');
+            disposeAll(ctx);
+        });
+        test('also restarts on port changes (port restart is a subset of the new behavior)', async () => {
+            _setWorkspaceFolders(['/workspace']);
+            _setConfig('bitburnerSync', 'port', 0);
+            const ctx = makeContext();
+            (0, extension_1.activate)(ctx);
+            await vscodeMock.commands.executeCommand('bitburnerSync.startServer');
+            _triggerConfigChange('bitburnerSync.port');
+            const sawRestart = await waitForLogLine(/Configuration changed, restarting/i);
+            assert_1.strict.ok(sawRestart, 'expected restart log line after port change');
+            await vscodeMock.commands.executeCommand('bitburnerSync.stopServer');
+            disposeAll(ctx);
+        });
+        test('does not restart when the server is stopped', async () => {
+            _setWorkspaceFolders(['/workspace']);
+            const ctx = makeContext();
+            (0, extension_1.activate)(ctx);
+            // Server is in 'stopped' state — never started.
+            _triggerConfigChange('bitburnerSync.syncDirectory');
+            await (0, helpers_1.waitMs)(50);
+            const channel = _state.outputChannels[0];
+            assert_1.strict.ok(!channel.lines.some(l => /restarting/i.test(l)), `unexpected restart while stopped: ${JSON.stringify(channel.lines)}`);
+            disposeAll(ctx);
+        });
+        test('ignores config changes outside the bitburnerSync section', async () => {
+            _setWorkspaceFolders(['/workspace']);
+            _setConfig('bitburnerSync', 'port', 0);
+            const ctx = makeContext();
+            (0, extension_1.activate)(ctx);
+            await vscodeMock.commands.executeCommand('bitburnerSync.startServer');
+            // Some unrelated extension's setting changed
+            _triggerConfigChange('editor.fontSize');
+            await (0, helpers_1.waitMs)(50);
+            const channel = _state.outputChannels[0];
+            assert_1.strict.ok(!channel.lines.some(l => /restarting/i.test(l)), `unexpected restart from unrelated config change: ${JSON.stringify(channel.lines)}`);
+            await vscodeMock.commands.executeCommand('bitburnerSync.stopServer');
+            disposeAll(ctx);
+        });
+    });
+    suite('toggleServer in error state', () => {
+        async function bindProbe() {
+            const probe = new ws_1.WebSocketServer({ host: '127.0.0.1', port: 0 });
+            await new Promise((resolve, reject) => {
+                probe.once('listening', () => resolve());
+                probe.once('error', reject);
+            });
+            const addr = probe.address();
+            if (typeof addr !== 'object' || addr === null) {
+                throw new Error('probe has no bound port');
+            }
+            return {
+                port: addr.port,
+                close: () => new Promise((resolve, reject) => {
+                    probe.close(err => err ? reject(err) : resolve());
+                }),
+            };
+        }
+        function findStatusBarText() {
+            return _state.statusBarItems[0]?.text ?? '';
+        }
+        test('clicking the status bar (toggleServer) after a bind failure retries instead of stopping', async () => {
+            // Occupy the port we're going to give the extension.
+            const probe = await bindProbe();
+            try {
+                _setWorkspaceFolders(['/workspace']);
+                _setConfig('bitburnerSync', 'port', probe.port);
+                const ctx = makeContext();
+                (0, extension_1.activate)(ctx);
+                // First start fails — EADDRINUSE leaves the WSServer in the 'error' state.
+                await vscodeMock.commands.executeCommand('bitburnerSync.startServer');
+                await (0, helpers_1.waitMs)(50);
+                assert_1.strict.match(findStatusBarText(), /Error/, `expected error state after EADDRINUSE, got: "${findStatusBarText()}"`);
+                // Free the port so retry can succeed.
+                await probe.close();
+                // Click the status bar — this used to call stopServer (the bug); should now retry.
+                await vscodeMock.commands.executeCommand('bitburnerSync.toggleServer');
+                await (0, helpers_1.waitMs)(100);
+                assert_1.strict.match(findStatusBarText(), /Waiting/, `expected waiting state after retry, got: "${findStatusBarText()}"`);
+                await vscodeMock.commands.executeCommand('bitburnerSync.stopServer');
+                disposeAll(ctx);
+            }
+            catch (err) {
+                // Make sure the probe is closed even if the assertion fails.
+                try {
+                    await probe.close();
+                }
+                catch { /* already closed */ }
+                throw err;
+            }
+        });
+        test('startServer command itself also retries from error state (no "already running" bail)', async () => {
+            const probe = await bindProbe();
+            try {
+                _setWorkspaceFolders(['/workspace']);
+                _setConfig('bitburnerSync', 'port', probe.port);
+                const ctx = makeContext();
+                (0, extension_1.activate)(ctx);
+                await vscodeMock.commands.executeCommand('bitburnerSync.startServer');
+                await (0, helpers_1.waitMs)(50);
+                assert_1.strict.match(findStatusBarText(), /Error/);
+                await probe.close();
+                // Use the explicit startServer command — must not show "already running".
+                await vscodeMock.commands.executeCommand('bitburnerSync.startServer');
+                await (0, helpers_1.waitMs)(100);
+                assert_1.strict.match(findStatusBarText(), /Waiting/);
+                const alreadyRunning = _state.notifications.find(n => /already running/i.test(n.message));
+                assert_1.strict.equal(alreadyRunning, undefined, `did not expect an "already running" notification: ${JSON.stringify(alreadyRunning)}`);
+                await vscodeMock.commands.executeCommand('bitburnerSync.stopServer');
+                disposeAll(ctx);
+            }
+            catch (err) {
+                try {
+                    await probe.close();
+                }
+                catch { /* already closed */ }
+                throw err;
+            }
+        });
+    });
+    suite('syncDirectory safety', () => {
+        function findEscapeWarning() {
+            return _state.notifications.find(n => n.kind === 'warning' && /escape the workspace/i.test(n.message));
+        }
+        test('warns at activation when syncDirectory is configured to a traversal path', () => {
+            _setWorkspaceFolders(['/workspace']);
+            _setConfig('bitburnerSync', 'syncDirectory', '../../etc');
+            const ctx = makeContext();
+            (0, extension_1.activate)(ctx);
+            const warn = findEscapeWarning();
+            assert_1.strict.ok(warn, `expected an escape warning, got: ${JSON.stringify(_state.notifications)}`);
+            // Same line should also be in the output channel
+            const channel = _state.outputChannels[0];
+            assert_1.strict.ok(channel.lines.some(l => /escape the workspace/i.test(l)));
+            disposeAll(ctx);
+        });
+        test('does not warn at activation when syncDirectory is a normal value', () => {
+            _setWorkspaceFolders(['/workspace']);
+            _setConfig('bitburnerSync', 'syncDirectory', 'src');
+            const ctx = makeContext();
+            (0, extension_1.activate)(ctx);
+            assert_1.strict.equal(findEscapeWarning(), undefined);
+            disposeAll(ctx);
+        });
+        test('warns when syncDirectory is changed to a traversal value mid-session', async () => {
+            _setWorkspaceFolders(['/workspace']);
+            _setConfig('bitburnerSync', 'syncDirectory', 'src'); // valid initially
+            const ctx = makeContext();
+            (0, extension_1.activate)(ctx);
+            assert_1.strict.equal(findEscapeWarning(), undefined);
+            // User changes setting to something dangerous
+            _setConfig('bitburnerSync', 'syncDirectory', '../escape');
+            _triggerConfigChange('bitburnerSync.syncDirectory');
+            await (0, helpers_1.waitMs)(20);
+            assert_1.strict.ok(findEscapeWarning(), `expected an escape warning after config change`);
+            disposeAll(ctx);
+        });
+    });
+});
+//# sourceMappingURL=extension.test.js.map

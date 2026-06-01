@@ -1,0 +1,142 @@
+{
+  "name": "bitburner-file-sync-plugin",
+  "displayName": "Bitburner File Sync Plugin",
+  "description": "Sync local workspace files to Bitburner via the Remote File API",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.118.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "bitburnerSync.startServer",
+        "title": "Bitburner: Start Sync Server"
+      },
+      {
+        "command": "bitburnerSync.stopServer",
+        "title": "Bitburner: Stop Sync Server"
+      },
+      {
+        "command": "bitburnerSync.syncFile",
+        "title": "Bitburner: Sync Current File"
+      },
+      {
+        "command": "bitburnerSync.syncAll",
+        "title": "Bitburner: Sync All Files"
+      },
+      {
+        "command": "bitburnerSync.getDefinitions",
+        "title": "Bitburner: Download Type Definitions"
+      },
+      {
+        "command": "bitburnerSync.downloadAll",
+        "title": "Bitburner: Download Files from Server"
+      }
+    ],
+    "configuration": {
+      "title": "Bitburner Sync",
+      "properties": {
+        "bitburnerSync.port": {
+          "type": "number",
+          "default": 12525,
+          "description": "WebSocket server port for Bitburner Remote API connection"
+        },
+        "bitburnerSync.autoSync": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically push files to Bitburner on save"
+        },
+        "bitburnerSync.targetServer": {
+          "type": "string",
+          "default": "home",
+          "description": "Target Bitburner server name"
+        },
+        "bitburnerSync.fileExtensions": {
+          "type": "array",
+          "default": [
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".txt",
+            ".json",
+            ".css",
+            ".py"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "File extensions to sync"
+        },
+        "bitburnerSync.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notification messages when files are synced"
+        },
+        "bitburnerSync.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start the sync server when VS Code opens"
+        },
+        "bitburnerSync.autoDownloadDefinitions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically download type definitions when Bitburner connects"
+        },
+        "bitburnerSync.syncDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Workspace-relative directory used for both upload and download. Local files inside this directory are pushed into Bitburner relative to it (e.g. with 'src', src/foo.js becomes /foo.js on home), and files pulled from the game land under this same directory. An empty string or '/' means the workspace root."
+        },
+        "bitburnerSync.exclude": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Workspace-relative glob patterns to exclude from syncing, in addition to the always-excluded baseline (NetscriptDefinitions.d.ts, .git/**, .gitignore, .vscode/**, node_modules/**). Uses minimatch (same semantics as VS Code's findFiles): supports ** (any segments including none), * (within one segment), ?, {a,b} brace expansion, and [abc] character classes. Examples: [\"**/*.test.ts\", \"secrets/api-key.txt\", \"build/{js,ts}/**\"]."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test",
+    "test:unit": "npm run compile-tests && mocha --config .mocharc.unit.json"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.118.0",
+    "@types/ws": "^8.18.1",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.27.3",
+    "eslint": "^9.39.3",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
+  },
+  "dependencies": {
+    "minimatch": "^10.2.5",
+    "rapydscript-ns": "^0.9.6",
+    "ws": "^8.20.0"
+  }
+}
