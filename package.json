@@ -38,8 +38,20 @@
       {
         "command": "bitburnerSync.downloadAll",
         "title": "Bitburner: Download Files from Server"
+      },
+      {
+        "command": "bitburnerSync.toggleServer",
+        "title": "Bitburner: Toggle Sync Server"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "bitburnerSync.toggleServer",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "Bitburner Sync",
       "properties": {

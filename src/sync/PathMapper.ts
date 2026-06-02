@@ -6,21 +6,27 @@ export class PathMapper {
     constructor(private readonly config: Configuration) {}
 
     mapToRemote(uri: vscode.Uri): string {
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-        if (!workspaceFolder) {
+        // Always resolve against the primary (first) workspace folder. In a
+        // multi-root workspace, files in folders 2+ are out of scope — sync
+        // is documented as primary-folder-only and the activation warning
+        // tells the user as much.
+        const primary = vscode.workspace.workspaceFolders?.[0];
+        if (!primary) {
             throw new Error(`File ${uri.fsPath} is not in a workspace folder`);
         }
 
+        const rootRel = path.relative(primary.uri.fsPath, uri.fsPath).replace(/\\/g, '/');
+        if (rootRel === '..' || rootRel.startsWith('../') || path.isAbsolute(rootRel)) {
+            throw new Error(`File ${uri.fsPath} is not in the primary workspace folder (${primary.uri.fsPath})`);
+        }
+
         const syncDir = this.config.syncDirectory;
-        const baseFsPath = syncDir
-            ? path.join(workspaceFolder.uri.fsPath, syncDir)
-            : workspaceFolder.uri.fsPath;
-
-        let relativePath = path.relative(baseFsPath, uri.fsPath);
-        relativePath = relativePath.replace(/\\/g, '/');
-
-        if (relativePath === '..' || relativePath.startsWith('../')) {
-            throw new Error(`File ${uri.fsPath} is outside the sync directory '${syncDir}'`);
+        let relativePath = rootRel;
+        if (syncDir) {
+            if (rootRel !== syncDir && !rootRel.startsWith(syncDir + '/')) {
+                throw new Error(`File ${uri.fsPath} is outside the sync directory '${syncDir}'`);
+            }
+            relativePath = rootRel.slice(syncDir.length);
         }
 
         if (!relativePath.startsWith('/')) {

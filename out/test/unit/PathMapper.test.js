@@ -59,14 +59,23 @@ suite('PathMapper', () => {
         const uri = Uri.file('C:\\workspace\\src\\script.js');
         assert_1.strict.equal(mapper.mapToRemote(uri), '/src/script.js');
     });
-    test('throws when the file is outside any workspace folder', () => {
+    test('throws when the file is outside the primary workspace folder', () => {
         _setWorkspaceFolders(['/workspace']);
         const uri = Uri.file('/elsewhere/script.js');
-        assert_1.strict.throws(() => mapper.mapToRemote(uri), /not in a workspace folder/);
+        assert_1.strict.throws(() => mapper.mapToRemote(uri), /not in the primary workspace folder/);
     });
     test('throws when there are no workspace folders at all', () => {
         const uri = Uri.file('/anywhere/script.js');
         assert_1.strict.throws(() => mapper.mapToRemote(uri), /not in a workspace folder/);
+    });
+    test('rejects files in a non-primary multi-root workspace folder', () => {
+        _setWorkspaceFolders(['/primary', '/secondary']);
+        const inSecondary = Uri.file('/secondary/script.js');
+        assert_1.strict.throws(() => mapper.mapToRemote(inSecondary), /not in the primary workspace folder/, 'files in folder 2+ must not silently get pushed via their own folder');
+    });
+    test('accepts files in the primary folder of a multi-root workspace', () => {
+        _setWorkspaceFolders(['/primary', '/secondary']);
+        assert_1.strict.equal(mapper.mapToRemote(Uri.file('/primary/script.js')), '/script.js');
     });
     test('rejects glob meta-characters in remote path', () => {
         _setWorkspaceFolders(['/workspace']);
@@ -86,7 +95,7 @@ suite('PathMapper', () => {
         // by using a sibling workspace path that produces traversal.
         _setWorkspaceFolders(['/workspace/inner']);
         const escaping = Uri.file('/workspace/sibling/file.js');
-        assert_1.strict.throws(() => mapper.mapToRemote(escaping), /not in a workspace folder/);
+        assert_1.strict.throws(() => mapper.mapToRemote(escaping), /not in the primary workspace folder/);
         // Direct check: any path containing ".." must be rejected by the validator.
         // We exercise the validator via mapToRemote with a crafted workspace folder layout
         // where the relative path contains ".." (only possible when the file is outside

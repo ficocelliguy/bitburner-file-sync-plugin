@@ -21,7 +21,16 @@ export class FileWatcher implements vscode.Disposable {
             return;
         }
 
-        const pattern = this.config.fileGlob;
+        // Scope to the primary workspace folder. A bare-string glob would
+        // watch every folder in a multi-root workspace, but downloads only
+        // ever land in folder[0] and the activation warning promises the
+        // sync stays inside it.
+        const primary = vscode.workspace.workspaceFolders?.[0];
+        if (!primary) {
+            return;
+        }
+
+        const pattern = new vscode.RelativePattern(primary, this.config.fileGlob);
         this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
 
         this.fileWatcher.onDidChange((uri) => {
@@ -49,17 +58,17 @@ export class FileWatcher implements vscode.Disposable {
     }
 
     private isInSyncDirectory(uri: vscode.Uri): boolean {
-        const syncDir = this.config.syncDirectory;
-        if (!syncDir) {
-            return true;
-        }
-        const folder = vscode.workspace.getWorkspaceFolder(uri);
-        if (!folder) {
+        // Save events fire for documents from any workspace folder. Filter
+        // here to the primary folder (and the configured syncDirectory inside
+        // it) so we don't try to push a file that's already out of scope.
+        const primary = vscode.workspace.workspaceFolders?.[0];
+        if (!primary) {
             return false;
         }
         const filePath = uri.fsPath.replace(/\\/g, '/');
-        const folderPath = folder.uri.fsPath.replace(/\\/g, '/');
-        const expectedPrefix = `${folderPath}/${syncDir}/`;
+        const folderPath = primary.uri.fsPath.replace(/\\/g, '/');
+        const syncDir = this.config.syncDirectory;
+        const expectedPrefix = syncDir ? `${folderPath}/${syncDir}/` : `${folderPath}/`;
         return filePath.startsWith(expectedPrefix);
     }
 

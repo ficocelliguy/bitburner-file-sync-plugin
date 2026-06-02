@@ -149,6 +149,39 @@ suite('WebSocketServer', () => {
         await waitForState(server, 'waiting');
     });
 
+    test('emits a single `disconnected` between connect-handoffs (no double disconnect, no missed one)', async () => {
+        const port = await startServer(server);
+        const events: string[] = [];
+        server.on('connected', () => events.push('connected'));
+        server.on('disconnected', () => events.push('disconnected'));
+
+        const c1 = new WebSocket(`ws://127.0.0.1:${port}`);
+        await waitForOpen(c1);
+        await waitForState(server, 'connected');
+
+        // Hand off to a second client. The handover must fire exactly one
+        // `disconnected` for c1 before the `connected` for c2. The old ws's
+        // own 'close' handler must NOT fire a second disconnected after the
+        // swap.
+        const c2 = new WebSocket(`ws://127.0.0.1:${port}`);
+        await waitForOpen(c2);
+        // Let c1's close event flush so any spurious second 'disconnected'
+        // would show up below.
+        await new Promise<void>(resolve => c1.once('close', () => resolve()));
+        // Small extra tick in case the ws close handler is queued.
+        await new Promise(r => setTimeout(r, 20));
+
+        assert.deepEqual(
+            events,
+            ['connected', 'disconnected', 'connected'],
+            `expected one disconnect between two connects, got: ${JSON.stringify(events)}`
+        );
+        assert.equal(server.isConnected, true);
+
+        c2.close();
+        await waitForState(server, 'waiting');
+    });
+
     test('emits `disconnected` when the active client closes', async () => {
         const port = await startServer(server);
         const client = new WebSocket(`ws://127.0.0.1:${port}`);

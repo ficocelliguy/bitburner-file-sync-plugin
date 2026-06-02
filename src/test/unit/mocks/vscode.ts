@@ -69,6 +69,26 @@ class ThemeColor {
     constructor(public readonly id: string) {}
 }
 
+// Minimal stand-in for vscode.RelativePattern. Mirrors the real shape closely
+// enough for the production code to construct it; the mock filesystem APIs
+// only care about the `.pattern` string.
+class RelativePattern {
+    public readonly baseUri: Uri;
+    public readonly base: string;
+    constructor(base: Uri | MockWorkspaceFolder | string, public readonly pattern: string) {
+        if (typeof base === 'string') {
+            this.baseUri = Uri.file(base);
+            this.base = base;
+        } else if (base instanceof Uri) {
+            this.baseUri = base;
+            this.base = base.fsPath;
+        } else {
+            this.baseUri = base.uri;
+            this.base = base.uri.fsPath;
+        }
+    }
+}
+
 const StatusBarAlignment = { Left: 1, Right: 2 } as const;
 
 class MockOutputChannel {
@@ -119,7 +139,7 @@ class MockFileSystemWatcher {
     public onChangeListeners: Listener<Uri>[] = [];
     public onCreateListeners: Listener<Uri>[] = [];
     public onDeleteListeners: Listener<Uri>[] = [];
-    constructor(public readonly pattern: string) {}
+    constructor(public readonly pattern: string | RelativePattern) {}
 
     private register(
         list: Listener<Uri>[],
@@ -179,12 +199,22 @@ interface ConfigChangeEvent {
     affectsConfiguration: (section: string) => boolean;
 }
 
+interface FindFilesCall {
+    include: string | RelativePattern;
+    exclude: string | RelativePattern | null | undefined;
+}
+
 interface State {
     configValues: Map<string, unknown>;
     languageConfigValues: Map<string, unknown>;
     workspaceFolders: MockWorkspaceFolder[] | undefined;
     files: Map<string, Buffer>;
+    // When set for a given fsPath, stat() returns this size regardless of
+    // the file's actual buffer length. Used to simulate stat/read race
+    // windows where the file grows between the two calls.
+    statSizeOverride: Map<string, number>;
     findFilesQueue: Uri[];
+    findFilesCalls: FindFilesCall[];
     notifications: Notification[];
     commands: Map<string, AnyFn>;
     activeTextEditor: MockTextEditor | undefined;
@@ -203,7 +233,9 @@ export const _state: State = {
     languageConfigValues: new Map(),
     workspaceFolders: undefined,
     files: new Map(),
+    statSizeOverride: new Map(),
     findFilesQueue: [],
+    findFilesCalls: [],
     notifications: [],
     commands: new Map(),
     activeTextEditor: undefined,
@@ -222,7 +254,9 @@ export function _reset(): void {
     _state.languageConfigValues = new Map();
     _state.workspaceFolders = undefined;
     _state.files = new Map();
+    _state.statSizeOverride = new Map();
     _state.findFilesQueue = [];
+    _state.findFilesCalls = [];
     _state.notifications = [];
     _state.commands = new Map();
     _state.activeTextEditor = undefined;
@@ -359,13 +393,16 @@ export const workspace = {
             if (!content) {
                 throw new Error(`ENOENT: ${uri.fsPath}`);
             }
-            return { type: 1, ctime: 0, mtime: 0, size: content.length };
+            const override = _state.statSizeOverride.get(uri.fsPath);
+            const size = override !== undefined ? override : content.length;
+            return { type: 1, ctime: 0, mtime: 0, size };
         },
     },
-    async findFiles(_pattern: string): Promise<Uri[]> {
+    async findFiles(include: string | RelativePattern, exclude?: string | RelativePattern | null): Promise<Uri[]> {
+        _state.findFilesCalls.push({ include, exclude });
         return _state.findFilesQueue.slice();
     },
-    createFileSystemWatcher(pattern: string): MockFileSystemWatcher {
+    createFileSystemWatcher(pattern: string | RelativePattern): MockFileSystemWatcher {
         const w = new MockFileSystemWatcher(pattern);
         _state.fileWatchers.push(w);
         return w;
@@ -447,7 +484,7 @@ export const commands = {
     },
 };
 
-export { Uri, Disposable, ThemeColor, StatusBarAlignment, MockFileSystemWatcher, MockStatusBarItem, MockOutputChannel };
+export { Uri, Disposable, ThemeColor, RelativePattern, StatusBarAlignment, MockFileSystemWatcher, MockStatusBarItem, MockOutputChannel };
 
 export type ExtensionContext = {
     subscriptions: { dispose(): unknown }[];

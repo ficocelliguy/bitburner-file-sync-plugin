@@ -61,6 +61,14 @@ const MAX_FILE_SIZE_BYTES = 1024 * 1024;
 // known artifact from the game itself rather than user content, and TypeScript
 // declaration files for large APIs can legitimately run into the multi-MB range.
 const MAX_DEFINITIONS_SIZE_BYTES = 8 * 1024 * 1024;
+// Hard ceiling on how many filenames a single downloadAll() will accept from
+// the server. Real Bitburner saves are dozens to low-hundreds of scripts; a
+// listing in the thousands almost certainly means a corrupt save, a buggy
+// server, or a hostile peer trying to weaponize the unbounded sequential
+// getFile loop. Refuse the whole operation rather than start chewing through
+// it — the user can re-issue with a narrower fileExtensions filter, or look
+// at the output channel to see why the listing is unreasonable.
+const MAX_DOWNLOAD_FILE_COUNT = 5000;
 class SyncEngine {
     api;
     config;
@@ -101,6 +109,15 @@ class SyncEngine {
         }
         const remotePath = this.pathMapper.mapToRemote(uri);
         const bytes = await vscode.workspace.fs.readFile(uri);
+        // Re-check post-read. The stat() above can race with a writer growing
+        // the file: stat reports 100 bytes, the file balloons to 50 MB before
+        // readFile latches, and the original cap check would have let it
+        // through. The buffer is already allocated, so this can't prevent the
+        // read — but it stops the oversize content from being pushed and
+        // gives a clear per-file error.
+        if (bytes.byteLength > MAX_FILE_SIZE_BYTES) {
+            throw new Error(`File exceeds the ${formatBytes(MAX_FILE_SIZE_BYTES)} sync limit: ${uri.fsPath} (${formatBytes(bytes.byteLength)})`);
+        }
         const content = Buffer.from(bytes).toString('utf8');
         await this.api.pushFile(remotePath, content, this.config.targetServer);
         this.log(`Pushed: ${remotePath}`);
@@ -113,9 +130,19 @@ class SyncEngine {
             vscode.window.showWarningMessage('bitburnerSync.fileExtensions is set to []. Nothing will be synced. Remove the setting to fall back to the defaults.');
             return;
         }
-        const pattern = this.config.fileGlob;
+        // Scope to the primary workspace folder via RelativePattern. A plain
+        // string glob would search every folder in a multi-root workspace,
+        // contradicting the primary-folder-only model the activation warning
+        // promises and pushing files we can't round-trip on download.
+        const primary = vscode.workspace.workspaceFolders?.[0];
+        if (!primary) {
+            vscode.window.showWarningMessage('No workspace folder open.');
+            return;
+        }
+        const includePattern = new vscode.RelativePattern(primary, this.config.fileGlob);
         const excludeGlob = this.findFilesExcludeGlob();
-        const files = await vscode.workspace.findFiles(pattern, excludeGlob);
+        const excludePattern = excludeGlob ? new vscode.RelativePattern(primary, excludeGlob) : null;
+        const files = await vscode.workspace.findFiles(includePattern, excludePattern);
         if (files.length === 0) {
             vscode.window.showWarningMessage('No matching files found to sync.');
             return;
@@ -183,6 +210,14 @@ class SyncEngine {
         this.debounceTimers.set(key, timer);
     }
     async downloadAll() {
+        // Honor the documented "sync nothing" opt-out symmetrically: with no
+        // allowed extensions, the whole listing → filter → fetch loop is dead
+        // weight. Bail before the getFileNames RPC so the user gets the same
+        // explicit warning push paths produce.
+        if (this.config.fileExtensions.length === 0) {
+            vscode.window.showWarningMessage('bitburnerSync.fileExtensions is set to []. Nothing will be downloaded. Remove the setting to fall back to the defaults.');
+            return;
+        }
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
             throw new Error('No workspace folder open');
@@ -193,6 +228,12 @@ class SyncEngine {
         const fileNames = await this.api.getFileNames(this.config.targetServer);
         if (fileNames.length === 0) {
             vscode.window.showWarningMessage('No files found on Bitburner server.');
+            return;
+        }
+        if (fileNames.length > MAX_DOWNLOAD_FILE_COUNT) {
+            const msg = `Refusing to download: server returned ${fileNames.length} filenames (limit is ${MAX_DOWNLOAD_FILE_COUNT}). This usually indicates a corrupt save or a buggy server. Narrow bitburnerSync.fileExtensions or contact the server admin.`;
+            this.log(msg);
+            vscode.window.showErrorMessage(msg);
             return;
         }
         // Pre-flight: validate every server-supplied filename, drop the ones
@@ -272,12 +313,16 @@ class SyncEngine {
         return [...ALWAYS_EXCLUDE, ...this.config.exclude];
     }
     isExcluded(uri) {
-        const folder = vscode.workspace.getWorkspaceFolder(uri);
-        if (!folder) {
+        // Anchor on the primary workspace folder so a file in folder #2 of a
+        // multi-root workspace doesn't sneak past the exclude check just
+        // because its own folder matches. PathMapper will throw on it next,
+        // surfacing a clear "not in primary workspace folder" error.
+        const primary = vscode.workspace.workspaceFolders?.[0];
+        if (!primary) {
             return false;
         }
-        const rel = path.relative(folder.uri.fsPath, uri.fsPath).replace(/\\/g, '/');
-        if (!rel || rel.startsWith('..')) {
+        const rel = path.relative(primary.uri.fsPath, uri.fsPath).replace(/\\/g, '/');
+        if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
             return false;
         }
         // Use minimatch so this matcher and VS Code's findFiles share
@@ -460,6 +505,11 @@ function matchesAllowedExtension(filename, allowed) {
 // JSONC document can be fed to JSON.parse. Strings (including escaped quotes)
 // are preserved verbatim. Used only to detect existing config — never to
 // rewrite a user's file.
+//
+// Trailing-comma handling is done inside the same string-aware scan rather
+// than via a final regex pass — a string containing `,}` content (e.g.
+// `"comment": "ends with ,}"`) used to get mangled by an unconditional
+// `,(\s*[}\]])` sweep over the post-strip text.
 function stripJsonComments(text) {
     let out = '';
     let i = 0;
@@ -498,11 +548,29 @@ function stripJsonComments(text) {
             }
             i += 2;
         }
+        else if (c === ',') {
+            // Look ahead past whitespace for `}` or `]`. If found, drop this
+            // comma — it's a trailing comma. We only consume whitespace, not
+            // comments: a `,` followed by `// foo` before `}` is unusual
+            // enough that we'd rather leave it for JSON.parse to reject than
+            // try to chase comments while still inside the comma rule.
+            let j = i + 1;
+            while (j < text.length && (text[j] === ' ' || text[j] === '\t' || text[j] === '\n' || text[j] === '\r')) {
+                j++;
+            }
+            if (j < text.length && (text[j] === '}' || text[j] === ']')) {
+                i++; // skip the comma; whitespace will be emitted on subsequent iterations
+            }
+            else {
+                out += c;
+                i++;
+            }
+        }
         else {
             out += c;
             i++;
         }
     }
-    return out.replace(/,(\s*[}\]])/g, '$1');
+    return out;
 }
 //# sourceMappingURL=SyncEngine.js.map

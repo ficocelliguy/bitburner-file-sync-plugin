@@ -39,7 +39,7 @@ const Configuration_1 = require("../../config/Configuration");
 const SyncEngine_1 = require("../../sync/SyncEngine");
 const helpers_1 = require("./helpers");
 const BitburnerApi_1 = require("../../api/BitburnerApi");
-const { Uri, _reset, _setWorkspaceFolders, _setConfig, _writeFile, _readFile, _state, _queueWarningResponse, } = vscodeMock;
+const { Uri, RelativePattern, _reset, _setWorkspaceFolders, _setConfig, _writeFile, _readFile, _state, _queueWarningResponse, } = vscodeMock;
 function buildEngine() {
     const rpc = new helpers_1.FakeRpcClient();
     const api = new BitburnerApi_1.BitburnerApi(rpc);
@@ -114,6 +114,30 @@ suite('SyncEngine', () => {
             await engine.syncAll();
             assert_1.strict.equal(rpc.calls.length, 0);
             assert_1.strict.equal(_state.notifications.filter(n => n.kind === 'warning').length, 1);
+        });
+        test('passes a RelativePattern scoped to the primary workspace folder', async () => {
+            const { engine } = buildEngine();
+            await engine.syncAll();
+            assert_1.strict.equal(_state.findFilesCalls.length, 1, 'expected exactly one findFiles call');
+            const include = _state.findFilesCalls[0].include;
+            assert_1.strict.ok(include instanceof RelativePattern, 'include must be a RelativePattern, not a bare string');
+            assert_1.strict.equal(include.baseUri.fsPath, '/workspace');
+            assert_1.strict.equal(include.pattern, '**/*.{js,ts,jsx,tsx,txt,json,css,py}');
+        });
+        test('rejects files from non-primary folders in a multi-root workspace', async () => {
+            _setWorkspaceFolders(['/primary', '/secondary']);
+            _writeFile('/secondary/a.js', 'secondary');
+            // VS Code's findFiles with a RelativePattern would never return this URI;
+            // simulate a worst-case path where it slips in anyway and check PathMapper
+            // throws (counted as a failure in the summary, not silently pushed).
+            _state.findFilesQueue = [Uri.file('/secondary/a.js')];
+            const { engine, rpc, output } = buildEngine();
+            await engine.syncAll();
+            assert_1.strict.equal(rpc.calls.filter(c => c.method === 'pushFile').length, 0);
+            const summary = output.lines.find(l => /Sync complete/.test(l)) ?? '';
+            assert_1.strict.match(summary, /0 pushed, 1 failed/);
+            const failedLog = output.lines.find(l => /Failed to push .*secondary\/a\.js/.test(l)) ?? '';
+            assert_1.strict.match(failedLog, /not in the primary workspace folder/);
         });
         test('pushes every file found and reports the count', async () => {
             const { engine, rpc, output } = buildEngine();
@@ -244,6 +268,19 @@ suite('SyncEngine', () => {
             _writeFile('/workspace/big.js', 'x'.repeat(size));
             await assert_1.strict.rejects(engine.pushFile(Uri.file('/workspace/big.js')), /1\.5 MB/);
         });
+        test('post-read size check catches a file that grew over the cap between stat and readFile', async () => {
+            // Simulate the TOCTOU window: stat reported a small size but
+            // readFile latches a much larger buffer (a writer expanded the
+            // file between the two syscalls). The original cap check would
+            // have let the oversized content through; the post-read check
+            // rejects it.
+            const { engine, rpc } = buildEngine();
+            const path = '/workspace/grew.js';
+            _writeFile(path, 'x'.repeat(ONE_MB + 1));
+            _state.statSizeOverride.set(path, 100);
+            await assert_1.strict.rejects(engine.pushFile(Uri.file(path)), /exceeds the 1\.0 MB sync limit/);
+            assert_1.strict.equal(rpc.calls.length, 0, 'must not push an oversized buffer even when stat said it was small');
+        });
     });
     suite('fileExtensions = []', () => {
         test('syncAll warns and does nothing when fileExtensions is explicitly []', async () => {
@@ -255,14 +292,18 @@ suite('SyncEngine', () => {
             const warning = _state.notifications.find(n => n.kind === 'warning' && /fileExtensions is set to \[\]/.test(n.message));
             assert_1.strict.ok(warning, `expected a "set to []" warning, got: ${JSON.stringify(_state.notifications)}`);
         });
-        test('downloadAll downloads nothing when fileExtensions is explicitly []', async () => {
+        test('downloadAll warns and skips even the listing RPC when fileExtensions is explicitly []', async () => {
             _setConfig('bitburnerSync', 'fileExtensions', []);
             const { engine, rpc } = buildEngine();
+            // Queue a getFileNames response that would be consumed if we got
+            // there — the early-bail must prevent the RPC entirely.
             rpc.queueResponse('getFileNames', ['/main.js', '/foo.ts', '/notes.txt']);
             await engine.downloadAll();
-            // No getFile RPCs — every server file got filtered by the empty extension list.
-            assert_1.strict.equal(rpc.calls.filter(c => c.method === 'getFile').length, 0);
+            assert_1.strict.equal(rpc.calls.length, 0, 'no RPCs expected — should bail before getFileNames');
             assert_1.strict.equal(_readFile('/workspace/main.js'), undefined);
+            const warning = _state.notifications.find(n => n.kind === 'warning' && /fileExtensions is set to \[\]/.test(n.message));
+            assert_1.strict.ok(warning, `expected a "set to []" warning, got: ${JSON.stringify(_state.notifications)}`);
+            assert_1.strict.match(warning.message, /Nothing will be downloaded/);
         });
         test('pushFile (explicit syncFile command) honors the [] opt-out', async () => {
             _setConfig('bitburnerSync', 'fileExtensions', []);
@@ -662,6 +703,38 @@ suite('SyncEngine', () => {
             assert_1.strict.equal(rpc.calls.filter(c => c.method === 'getFile').length, 0);
             assert_1.strict.ok(output.lines.some(l => /Skipped \(extension not in bitburnerSync\.fileExtensions\)/.test(l)));
         });
+        test('refuses to proceed when the server returns an unreasonable number of filenames', async () => {
+            // 5001 is one over the documented MAX_DOWNLOAD_FILE_COUNT. A
+            // buggy/hostile server returning a flood like this would
+            // otherwise trigger one sequential getFile RPC per name.
+            const { engine, rpc, output } = buildEngine();
+            const flood = Array.from({ length: 5001 }, (_, i) => `/file${i}.js`);
+            rpc.queueResponse('getFileNames', flood);
+            await engine.downloadAll();
+            // No getFile call was made — we bailed before the loop.
+            assert_1.strict.equal(rpc.calls.filter(c => c.method === 'getFile').length, 0);
+            // No files were written.
+            assert_1.strict.equal(_readFile('/workspace/file0.js'), undefined);
+            // User saw an error notification explaining the refusal.
+            const errs = _state.notifications.filter(n => n.kind === 'error');
+            assert_1.strict.equal(errs.length, 1, `expected one error notification, got: ${JSON.stringify(_state.notifications)}`);
+            assert_1.strict.match(errs[0].message, /Refusing to download.*5001/);
+            // Same line in the output channel for later diagnosis.
+            assert_1.strict.ok(output.lines.some(l => /Refusing to download.*5001/.test(l)));
+        });
+        test('accepts a listing exactly at the per-call cap', async () => {
+            // The boundary: 5000 files is allowed, the loop runs normally.
+            const { engine, rpc } = buildEngine();
+            const atLimit = Array.from({ length: 5000 }, (_, i) => `/f${i}.js`);
+            rpc.queueResponse('getFileNames', atLimit);
+            for (let i = 0; i < 5000; i++) {
+                rpc.queueResponse('getFile', `c${i}`);
+            }
+            await engine.downloadAll();
+            const errs = _state.notifications.filter(n => n.kind === 'error');
+            assert_1.strict.equal(errs.length, 0, `expected no error at the limit boundary, got: ${JSON.stringify(errs)}`);
+            assert_1.strict.equal(rpc.calls.filter(c => c.method === 'getFile').length, 5000);
+        });
     });
     suite('downloadDefinitions', () => {
         test('throws when no workspace folder is open', async () => {
@@ -750,6 +823,28 @@ suite('SyncEngine', () => {
             const jsonc = [
                 '{',
                 '  // already wired up',
+                '  "files": ["NetscriptDefinitions.d.ts"],',
+                '}',
+            ].join('\n');
+            _writeFile('/workspace/tsconfig.json', jsonc);
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getDefinitionFile', 'x');
+            await engine.downloadDefinitions();
+            assert_1.strict.equal(_readFile('/workspace/tsconfig.json'), jsonc);
+            const warnings = _state.notifications.filter(n => n.kind === 'warning');
+            assert_1.strict.equal(warnings.length, 0, `expected no warnings, got: ${JSON.stringify(warnings)}`);
+        });
+        test('JSONC detection preserves string contents that look like trailing commas (string-aware scan)', async () => {
+            // A previous regex-based trailing-comma sweep would have stripped
+            // the `,` inside the "banner" string, corrupting the parse and
+            // sending the user down the manual-fix path even though the entry
+            // is already present. The scanner now ignores commas inside
+            // strings, so this case parses cleanly and we recognize the
+            // existing entry.
+            const jsonc = [
+                '{',
+                '  // user comment forces the JSONC path',
+                '  "banner": "{ foo ,} bar",',
                 '  "files": ["NetscriptDefinitions.d.ts"],',
                 '}',
             ].join('\n');

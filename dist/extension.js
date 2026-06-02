@@ -797,6 +797,10 @@ var require_receiver = __commonJS({
        *     extensions
        * @param {Boolean} [options.isServer=false] Specifies whether to operate in
        *     client or server mode
+       * @param {Number} [options.maxBufferedChunks=0] The maximum number of
+       *     buffered data chunks
+       * @param {Number} [options.maxFragments=0] The maximum number of message
+       *     fragments
        * @param {Number} [options.maxPayload=0] The maximum allowed message length
        * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
        *     not to skip UTF-8 validation for text and close messages
@@ -807,6 +811,8 @@ var require_receiver = __commonJS({
         this._binaryType = options.binaryType || BINARY_TYPES[0];
         this._extensions = options.extensions || {};
         this._isServer = !!options.isServer;
+        this._maxBufferedChunks = options.maxBufferedChunks | 0;
+        this._maxFragments = options.maxFragments | 0;
         this._maxPayload = options.maxPayload | 0;
         this._skipUTF8Validation = !!options.skipUTF8Validation;
         this[kWebSocket] = void 0;
@@ -836,6 +842,18 @@ var require_receiver = __commonJS({
        */
       _write(chunk, encoding, cb) {
         if (this._opcode === 8 && this._state == GET_INFO) return cb();
+        if (this._maxBufferedChunks > 0 && this._buffers.length >= this._maxBufferedChunks) {
+          cb(
+            this.createError(
+              RangeError,
+              "Too many buffered chunks",
+              false,
+              1008,
+              "WS_ERR_TOO_MANY_BUFFERED_PARTS"
+            )
+          );
+          return;
+        }
         this._bufferedBytes += chunk.length;
         this._buffers.push(chunk);
         this.startLoop(cb);
@@ -1165,6 +1183,17 @@ var require_receiver = __commonJS({
           return;
         }
         if (data.length) {
+          if (this._maxFragments > 0 && this._fragments.length >= this._maxFragments) {
+            const error = this.createError(
+              RangeError,
+              "Too many message fragments",
+              false,
+              1008,
+              "WS_ERR_TOO_MANY_BUFFERED_PARTS"
+            );
+            cb(error);
+            return;
+          }
           this._messageLength = this._totalPayloadLength;
           this._fragments.push(data);
         }
@@ -1190,6 +1219,17 @@ var require_receiver = __commonJS({
                 false,
                 1009,
                 "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH"
+              );
+              cb(error);
+              return;
+            }
+            if (this._maxFragments > 0 && this._fragments.length >= this._maxFragments) {
+              const error = this.createError(
+                RangeError,
+                "Too many message fragments",
+                false,
+                1008,
+                "WS_ERR_TOO_MANY_BUFFERED_PARTS"
               );
               cb(error);
               return;
@@ -1360,6 +1400,9 @@ var require_sender = __commonJS({
     "use strict";
     var { Duplex } = require("stream");
     var { randomFillSync } = require("crypto");
+    var {
+      types: { isUint8Array }
+    } = require("util");
     var PerMessageDeflate2 = require_permessage_deflate();
     var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants();
     var { isBlob, isValidStatusCode } = require_validation();
@@ -1513,8 +1556,10 @@ var require_sender = __commonJS({
           buf.writeUInt16BE(code, 0);
           if (typeof data === "string") {
             buf.write(data, 2);
-          } else {
+          } else if (isUint8Array(data)) {
             buf.set(data, 2);
+          } else {
+            throw new TypeError("Second argument must be a string or a Uint8Array");
           }
         }
         const options = {
@@ -2395,6 +2440,10 @@ var require_websocket = __commonJS({
        *     multiple times in the same tick
        * @param {Function} [options.generateMask] The function used to generate the
        *     masking key
+       * @param {Number} [options.maxBufferedChunks=0] The maximum number of
+       *     buffered data chunks
+       * @param {Number} [options.maxFragments=0] The maximum number of message
+       *     fragments
        * @param {Number} [options.maxPayload=0] The maximum allowed message size
        * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
        *     not to skip UTF-8 validation for text and close messages
@@ -2406,6 +2455,8 @@ var require_websocket = __commonJS({
           binaryType: this.binaryType,
           extensions: this._extensions,
           isServer: this._isServer,
+          maxBufferedChunks: options.maxBufferedChunks,
+          maxFragments: options.maxFragments,
           maxPayload: options.maxPayload,
           skipUTF8Validation: options.skipUTF8Validation
         });
@@ -2705,6 +2756,8 @@ var require_websocket = __commonJS({
         autoPong: true,
         closeTimeout: CLOSE_TIMEOUT,
         protocolVersion: protocolVersions[1],
+        maxBufferedChunks: 1024 * 1024,
+        maxFragments: 128 * 1024,
         maxPayload: 100 * 1024 * 1024,
         skipUTF8Validation: false,
         perMessageDeflate: true,
@@ -2947,6 +3000,8 @@ var require_websocket = __commonJS({
         websocket.setSocket(socket, head, {
           allowSynchronousEvents: opts.allowSynchronousEvents,
           generateMask: opts.generateMask,
+          maxBufferedChunks: opts.maxBufferedChunks,
+          maxFragments: opts.maxFragments,
           maxPayload: opts.maxPayload,
           skipUTF8Validation: opts.skipUTF8Validation
         });
@@ -3289,6 +3344,10 @@ var require_websocket_server = __commonJS({
        *     called
        * @param {Function} [options.handleProtocols] A hook to handle protocols
        * @param {String} [options.host] The hostname where to bind the server
+       * @param {Number} [options.maxBufferedChunks=1048576] The maximum number of
+       *     buffered data chunks
+       * @param {Number} [options.maxFragments=131072] The maximum number of message
+       *     fragments
        * @param {Number} [options.maxPayload=104857600] The maximum allowed message
        *     size
        * @param {Boolean} [options.noServer=false] Enable no server mode
@@ -3310,6 +3369,8 @@ var require_websocket_server = __commonJS({
         options = {
           allowSynchronousEvents: true,
           autoPong: true,
+          maxBufferedChunks: 1024 * 1024,
+          maxFragments: 128 * 1024,
           maxPayload: 100 * 1024 * 1024,
           skipUTF8Validation: false,
           perMessageDeflate: false,
@@ -3589,6 +3650,8 @@ var require_websocket_server = __commonJS({
         socket.removeListener("error", socketOnError);
         ws.setSocket(socket, head, {
           allowSynchronousEvents: this.options.allowSynchronousEvents,
+          maxBufferedChunks: this.options.maxBufferedChunks,
+          maxFragments: this.options.maxFragments,
           maxPayload: this.options.maxPayload,
           skipUTF8Validation: this.options.skipUTF8Validation
         });
@@ -3667,6 +3730,8 @@ var import_websocket_server = __toESM(require_websocket_server(), 1);
 
 // src/server/WebSocketServer.ts
 var import_events = require("events");
+var EADDRINUSE_RETRY_ATTEMPTS = 5;
+var EADDRINUSE_RETRY_DELAY_MS = 200;
 var WebSocketServer2 = class extends import_events.EventEmitter {
   server = null;
   client = null;
@@ -3677,40 +3742,74 @@ var WebSocketServer2 = class extends import_events.EventEmitter {
   get isConnected() {
     return this.client !== null && this.client.readyState === import_websocket.default.OPEN;
   }
-  start(port) {
-    return new Promise((resolve, reject) => {
-      if (this.server) {
-        resolve();
+  async start(port) {
+    if (this.server) {
+      await this.stop();
+    }
+    let lastErr;
+    for (let attempt = 1; attempt <= EADDRINUSE_RETRY_ATTEMPTS; attempt++) {
+      try {
+        await this.startOnce(port);
         return;
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+        const isAddrInUse = /already in use/.test(lastErr.message);
+        if (!isAddrInUse || attempt === EADDRINUSE_RETRY_ATTEMPTS) {
+          throw lastErr;
+        }
+        await delay(EADDRINUSE_RETRY_DELAY_MS);
       }
-      this.server = new import_websocket_server.default({ port });
+    }
+    throw lastErr ?? new Error("start() failed");
+  }
+  startOnce(port) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      this.server = new import_websocket_server.default({ port, host: "127.0.0.1" });
       this.server.on("listening", () => {
+        settled = true;
         this.setState("waiting");
         resolve();
       });
       this.server.on("error", (err) => {
-        if (err.code === "EADDRINUSE") {
+        if (!settled) {
+          this.server = null;
+          settled = true;
           this.setState("error");
-          reject(new Error(`Port ${port} is already in use`));
+          if (err.code === "EADDRINUSE") {
+            reject(new Error(`Port ${port} is already in use`));
+          } else {
+            reject(err);
+          }
         } else {
           this.setState("error");
-          reject(err);
+          this.emit("error", err);
         }
       });
       this.server.on("connection", (ws) => {
         if (this.client) {
-          this.client.close();
+          const old = this.client;
+          this.client = null;
+          this.emit("disconnected");
+          old.close();
         }
         this.client = ws;
         this.setState("connected");
         this.emit("connected");
         ws.on("message", (data) => {
+          let parsed;
           try {
-            const message = JSON.parse(data.toString());
-            this.emit("message", message);
+            parsed = JSON.parse(data.toString());
           } catch {
-            this.emit("error", new Error("Failed to parse message"));
+            this.emit("error", new Error("Failed to parse message: invalid JSON"));
+            return;
           }
+          if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+            const got = Array.isArray(parsed) ? "array" : parsed === null ? "null" : typeof parsed;
+            this.emit("error", new Error(`Failed to parse message: expected JSON object, got ${got}`));
+            return;
+          }
+          this.emit("message", parsed);
         });
         ws.on("close", () => {
           if (this.client === ws) {
@@ -3720,6 +3819,11 @@ var WebSocketServer2 = class extends import_events.EventEmitter {
           }
         });
         ws.on("error", (err) => {
+          if (this.client === ws) {
+            this.client = null;
+            this.setState(this.server ? "waiting" : "stopped");
+            this.emit("disconnected");
+          }
           this.emit("error", err);
         });
       });
@@ -3730,6 +3834,7 @@ var WebSocketServer2 = class extends import_events.EventEmitter {
       if (this.client) {
         this.client.close();
         this.client = null;
+        this.emit("disconnected");
       }
       if (this.server) {
         this.server.close(() => {
@@ -3755,18 +3860,26 @@ var WebSocketServer2 = class extends import_events.EventEmitter {
     this.emit("stateChanged", state);
   }
 };
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // src/server/JsonRpcClient.ts
 var JsonRpcClient = class {
   constructor(server, timeout = 1e4) {
     this.server = server;
     this.timeout = timeout;
-    this.server.on("message", (msg) => this.handleMessage(msg));
+    this.onMessage = (msg) => this.handleMessage(msg);
+    this.onDisconnected = () => this.rejectAllPending("Bitburner disconnected");
+    this.server.on("message", this.onMessage);
+    this.server.on("disconnected", this.onDisconnected);
   }
   server;
   nextId = 1;
   pending = /* @__PURE__ */ new Map();
   timeout;
+  onMessage;
+  onDisconnected;
   request(method, params) {
     return new Promise((resolve, reject) => {
       if (!this.server.isConnected) {
@@ -3785,33 +3898,64 @@ var JsonRpcClient = class {
         reject(new Error(`Request "${method}" timed out after ${this.timeout}ms`));
       }, this.timeout);
       this.pending.set(id, { resolve, reject, timer });
-      this.server.send(JSON.stringify(request));
+      try {
+        this.server.send(JSON.stringify(request));
+      } catch (err) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
     });
   }
   handleMessage(msg) {
-    if (msg.id === void 0) {
+    if (!isPlainObject(msg)) {
       return;
     }
-    const pending = this.pending.get(msg.id);
+    const id = msg.id;
+    if (typeof id !== "number") {
+      return;
+    }
+    const pending = this.pending.get(id);
     if (!pending) {
       return;
     }
-    this.pending.delete(msg.id);
+    this.pending.delete(id);
     clearTimeout(pending.timer);
-    if (msg.error) {
-      pending.reject(new Error(msg.error.message));
-    } else {
-      pending.resolve(msg.result);
+    const errorField = msg.error;
+    if (errorField !== void 0 && errorField !== null) {
+      const message = isPlainObject(errorField) && typeof errorField.message === "string" ? errorField.message : `RPC error with malformed shape: ${safeStringify(errorField)}`;
+      pending.reject(new Error(message));
+      return;
     }
+    pending.resolve(msg.result);
   }
   dispose() {
-    for (const [id, pending] of this.pending) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("Client disposed"));
-      this.pending.delete(id);
+    this.server.off("message", this.onMessage);
+    this.server.off("disconnected", this.onDisconnected);
+    this.rejectAllPending("Client disposed");
+  }
+  rejectAllPending(reason) {
+    if (this.pending.size === 0) {
+      return;
+    }
+    const entries = Array.from(this.pending.values());
+    this.pending.clear();
+    for (const entry of entries) {
+      clearTimeout(entry.timer);
+      entry.reject(new Error(reason));
     }
   }
 };
+function isPlainObject(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function safeStringify(v) {
+  try {
+    return JSON.stringify(v) ?? String(v);
+  } catch {
+    return String(v);
+  }
+}
 
 // src/api/BitburnerApi.ts
 var BitburnerApi = class {
@@ -3835,13 +3979,6 @@ var BitburnerApi = class {
       server: server ?? this.defaultServer
     };
     return this.rpc.request("getFile", params);
-  }
-  async deleteFile(filename, server) {
-    const params = {
-      filename,
-      server: server ?? this.defaultServer
-    };
-    return this.rpc.request("deleteFile", params);
   }
   async getFileNames(server) {
     const params = {
@@ -3874,16 +4011,10 @@ var Configuration = class {
     return this.config.get("targetServer", "home");
   }
   get fileExtensions() {
-    return this.config.get("fileExtensions", [
-      ".js",
-      ".ts",
-      ".jsx",
-      ".tsx",
-      ".txt",
-      ".json",
-      ".css",
-      ".py"
-    ]);
+    const inspected = this.config.inspect("fileExtensions");
+    const userSet = inspected?.globalValue !== void 0 || inspected?.workspaceValue !== void 0 || inspected?.workspaceFolderValue !== void 0 || inspected?.globalLanguageValue !== void 0 || inspected?.workspaceLanguageValue !== void 0 || inspected?.workspaceFolderLanguageValue !== void 0 || inspected?.defaultLanguageValue !== void 0;
+    const raw = userSet ? this.config.get("fileExtensions", []) ?? [] : FILE_EXTENSION_DEFAULTS.slice();
+    return raw.map((e) => e.trim().toLowerCase()).map((e) => e.replace(/^\.+/, "")).filter((e) => e.length > 0).map((e) => `.${e}`);
   }
   get showNotifications() {
     return this.config.get("showNotifications", true);
@@ -3895,21 +4026,1871 @@ var Configuration = class {
     return this.config.get("autoDownloadDefinitions", true);
   }
   get syncDirectory() {
+    const normalized = this.normalizedSyncDirectory();
+    if (isUnsafeSyncDirectory(normalized)) {
+      return "";
+    }
+    return normalized;
+  }
+  syncDirectoryError() {
+    const raw = this.config.get("syncDirectory", "");
+    if (!raw) {
+      return null;
+    }
+    const normalized = this.normalizedSyncDirectory();
+    if (isUnsafeSyncDirectory(normalized)) {
+      return `bitburnerSync.syncDirectory has been ignored because it would escape the workspace: ${JSON.stringify(raw)}. Falling back to the workspace root.`;
+    }
+    return null;
+  }
+  normalizedSyncDirectory() {
     const raw = this.config.get("syncDirectory", "");
     return raw.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
   }
   get fileGlob() {
     const exts = this.fileExtensions.map((e) => e.replace(".", ""));
+    if (exts.length === 0) {
+      return "__bitburnerSync_no_extensions_configured__";
+    }
     const prefix = this.syncDirectory ? `${this.syncDirectory}/` : "";
     return `${prefix}**/*.{${exts.join(",")}}`;
   }
+  get exclude() {
+    const raw = this.config.get("exclude", []);
+    return raw.map((p) => p.trim().replace(/\\/g, "/")).filter((p) => p.length > 0);
+  }
 };
+var FILE_EXTENSION_DEFAULTS = [
+  ".js",
+  ".ts",
+  ".jsx",
+  ".tsx",
+  ".txt",
+  ".json",
+  ".css",
+  ".py"
+];
+function isUnsafeSyncDirectory(normalized) {
+  if (!normalized) {
+    return false;
+  }
+  if (normalized.split("/").some((seg) => seg === "..")) {
+    return true;
+  }
+  if (/^[A-Za-z]:/.test(normalized)) {
+    return true;
+  }
+  return false;
+}
 
 // src/sync/SyncEngine.ts
+var path3 = __toESM(require("path"));
 var vscode3 = __toESM(require("vscode"));
 
+// node_modules/brace-expansion/node_modules/balanced-match/dist/esm/index.js
+var balanced = (a, b, str) => {
+  const ma = a instanceof RegExp ? maybeMatch(a, str) : a;
+  const mb = b instanceof RegExp ? maybeMatch(b, str) : b;
+  const r = ma !== null && mb != null && range(ma, mb, str);
+  return r && {
+    start: r[0],
+    end: r[1],
+    pre: str.slice(0, r[0]),
+    body: str.slice(r[0] + ma.length, r[1]),
+    post: str.slice(r[1] + mb.length)
+  };
+};
+var maybeMatch = (reg, str) => {
+  const m = str.match(reg);
+  return m ? m[0] : null;
+};
+var range = (a, b, str) => {
+  let begs, beg, left, right = void 0, result;
+  let ai = str.indexOf(a);
+  let bi = str.indexOf(b, ai + 1);
+  let i = ai;
+  if (ai >= 0 && bi > 0) {
+    if (a === b) {
+      return [ai, bi];
+    }
+    begs = [];
+    left = str.length;
+    while (i >= 0 && !result) {
+      if (i === ai) {
+        begs.push(i);
+        ai = str.indexOf(a, i + 1);
+      } else if (begs.length === 1) {
+        const r = begs.pop();
+        if (r !== void 0)
+          result = [r, bi];
+      } else {
+        beg = begs.pop();
+        if (beg !== void 0 && beg < left) {
+          left = beg;
+          right = bi;
+        }
+        bi = str.indexOf(b, i + 1);
+      }
+      i = ai < bi && ai >= 0 ? ai : bi;
+    }
+    if (begs.length && right !== void 0) {
+      result = [left, right];
+    }
+  }
+  return result;
+};
+
+// node_modules/brace-expansion/dist/esm/index.js
+var escSlash = "\0SLASH" + Math.random() + "\0";
+var escOpen = "\0OPEN" + Math.random() + "\0";
+var escClose = "\0CLOSE" + Math.random() + "\0";
+var escComma = "\0COMMA" + Math.random() + "\0";
+var escPeriod = "\0PERIOD" + Math.random() + "\0";
+var escSlashPattern = new RegExp(escSlash, "g");
+var escOpenPattern = new RegExp(escOpen, "g");
+var escClosePattern = new RegExp(escClose, "g");
+var escCommaPattern = new RegExp(escComma, "g");
+var escPeriodPattern = new RegExp(escPeriod, "g");
+var slashPattern = /\\\\/g;
+var openPattern = /\\{/g;
+var closePattern = /\\}/g;
+var commaPattern = /\\,/g;
+var periodPattern = /\\\./g;
+var EXPANSION_MAX = 1e5;
+function numeric(str) {
+  return !isNaN(str) ? parseInt(str, 10) : str.charCodeAt(0);
+}
+function escapeBraces(str) {
+  return str.replace(slashPattern, escSlash).replace(openPattern, escOpen).replace(closePattern, escClose).replace(commaPattern, escComma).replace(periodPattern, escPeriod);
+}
+function unescapeBraces(str) {
+  return str.replace(escSlashPattern, "\\").replace(escOpenPattern, "{").replace(escClosePattern, "}").replace(escCommaPattern, ",").replace(escPeriodPattern, ".");
+}
+function parseCommaParts(str) {
+  if (!str) {
+    return [""];
+  }
+  const parts = [];
+  const m = balanced("{", "}", str);
+  if (!m) {
+    return str.split(",");
+  }
+  const { pre, body, post } = m;
+  const p = pre.split(",");
+  p[p.length - 1] += "{" + body + "}";
+  const postParts = parseCommaParts(post);
+  if (post.length) {
+    ;
+    p[p.length - 1] += postParts.shift();
+    p.push.apply(p, postParts);
+  }
+  parts.push.apply(parts, p);
+  return parts;
+}
+function expand(str, options = {}) {
+  if (!str) {
+    return [];
+  }
+  const { max = EXPANSION_MAX } = options;
+  if (str.slice(0, 2) === "{}") {
+    str = "\\{\\}" + str.slice(2);
+  }
+  return expand_(escapeBraces(str), max, true).map(unescapeBraces);
+}
+function embrace(str) {
+  return "{" + str + "}";
+}
+function isPadded(el) {
+  return /^-?0\d/.test(el);
+}
+function lte(i, y) {
+  return i <= y;
+}
+function gte(i, y) {
+  return i >= y;
+}
+function expand_(str, max, isTop) {
+  const expansions = [];
+  const m = balanced("{", "}", str);
+  if (!m)
+    return [str];
+  const pre = m.pre;
+  const post = m.post.length ? expand_(m.post, max, false) : [""];
+  if (/\$$/.test(m.pre)) {
+    for (let k = 0; k < post.length && k < max; k++) {
+      const expansion = pre + "{" + m.body + "}" + post[k];
+      expansions.push(expansion);
+    }
+  } else {
+    const isNumericSequence = /^-?\d+\.\.-?\d+(?:\.\.-?\d+)?$/.test(m.body);
+    const isAlphaSequence = /^[a-zA-Z]\.\.[a-zA-Z](?:\.\.-?\d+)?$/.test(m.body);
+    const isSequence = isNumericSequence || isAlphaSequence;
+    const isOptions = m.body.indexOf(",") >= 0;
+    if (!isSequence && !isOptions) {
+      if (m.post.match(/,(?!,).*\}/)) {
+        str = m.pre + "{" + m.body + escClose + m.post;
+        return expand_(str, max, true);
+      }
+      return [str];
+    }
+    let n;
+    if (isSequence) {
+      n = m.body.split(/\.\./);
+    } else {
+      n = parseCommaParts(m.body);
+      if (n.length === 1 && n[0] !== void 0) {
+        n = expand_(n[0], max, false).map(embrace);
+        if (n.length === 1) {
+          return post.map((p) => m.pre + n[0] + p);
+        }
+      }
+    }
+    let N;
+    if (isSequence && n[0] !== void 0 && n[1] !== void 0) {
+      const x = numeric(n[0]);
+      const y = numeric(n[1]);
+      const width = Math.max(n[0].length, n[1].length);
+      let incr = n.length === 3 && n[2] !== void 0 ? Math.max(Math.abs(numeric(n[2])), 1) : 1;
+      let test = lte;
+      const reverse = y < x;
+      if (reverse) {
+        incr *= -1;
+        test = gte;
+      }
+      const pad = n.some(isPadded);
+      N = [];
+      for (let i = x; test(i, y) && N.length < max; i += incr) {
+        let c;
+        if (isAlphaSequence) {
+          c = String.fromCharCode(i);
+          if (c === "\\") {
+            c = "";
+          }
+        } else {
+          c = String(i);
+          if (pad) {
+            const need = width - c.length;
+            if (need > 0) {
+              const z = new Array(need + 1).join("0");
+              if (i < 0) {
+                c = "-" + z + c.slice(1);
+              } else {
+                c = z + c;
+              }
+            }
+          }
+        }
+        N.push(c);
+      }
+    } else {
+      N = [];
+      for (let j = 0; j < n.length; j++) {
+        N.push.apply(N, expand_(n[j], max, false));
+      }
+    }
+    for (let j = 0; j < N.length; j++) {
+      for (let k = 0; k < post.length && expansions.length < max; k++) {
+        const expansion = pre + N[j] + post[k];
+        if (!isTop || isSequence || expansion) {
+          expansions.push(expansion);
+        }
+      }
+    }
+  }
+  return expansions;
+}
+
+// node_modules/minimatch/dist/esm/assert-valid-pattern.js
+var MAX_PATTERN_LENGTH = 1024 * 64;
+var assertValidPattern = (pattern) => {
+  if (typeof pattern !== "string") {
+    throw new TypeError("invalid pattern");
+  }
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    throw new TypeError("pattern is too long");
+  }
+};
+
+// node_modules/minimatch/dist/esm/brace-expressions.js
+var posixClasses = {
+  "[:alnum:]": ["\\p{L}\\p{Nl}\\p{Nd}", true],
+  "[:alpha:]": ["\\p{L}\\p{Nl}", true],
+  "[:ascii:]": ["\\x00-\\x7f", false],
+  "[:blank:]": ["\\p{Zs}\\t", true],
+  "[:cntrl:]": ["\\p{Cc}", true],
+  "[:digit:]": ["\\p{Nd}", true],
+  "[:graph:]": ["\\p{Z}\\p{C}", true, true],
+  "[:lower:]": ["\\p{Ll}", true],
+  "[:print:]": ["\\p{C}", true],
+  "[:punct:]": ["\\p{P}", true],
+  "[:space:]": ["\\p{Z}\\t\\r\\n\\v\\f", true],
+  "[:upper:]": ["\\p{Lu}", true],
+  "[:word:]": ["\\p{L}\\p{Nl}\\p{Nd}\\p{Pc}", true],
+  "[:xdigit:]": ["A-Fa-f0-9", false]
+};
+var braceEscape = (s) => s.replace(/[[\]\\-]/g, "\\$&");
+var regexpEscape = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+var rangesToString = (ranges) => ranges.join("");
+var parseClass = (glob, position) => {
+  const pos = position;
+  if (glob.charAt(pos) !== "[") {
+    throw new Error("not in a brace expression");
+  }
+  const ranges = [];
+  const negs = [];
+  let i = pos + 1;
+  let sawStart = false;
+  let uflag = false;
+  let escaping = false;
+  let negate = false;
+  let endPos = pos;
+  let rangeStart = "";
+  WHILE: while (i < glob.length) {
+    const c = glob.charAt(i);
+    if ((c === "!" || c === "^") && i === pos + 1) {
+      negate = true;
+      i++;
+      continue;
+    }
+    if (c === "]" && sawStart && !escaping) {
+      endPos = i + 1;
+      break;
+    }
+    sawStart = true;
+    if (c === "\\") {
+      if (!escaping) {
+        escaping = true;
+        i++;
+        continue;
+      }
+    }
+    if (c === "[" && !escaping) {
+      for (const [cls, [unip, u, neg]] of Object.entries(posixClasses)) {
+        if (glob.startsWith(cls, i)) {
+          if (rangeStart) {
+            return ["$.", false, glob.length - pos, true];
+          }
+          i += cls.length;
+          if (neg)
+            negs.push(unip);
+          else
+            ranges.push(unip);
+          uflag = uflag || u;
+          continue WHILE;
+        }
+      }
+    }
+    escaping = false;
+    if (rangeStart) {
+      if (c > rangeStart) {
+        ranges.push(braceEscape(rangeStart) + "-" + braceEscape(c));
+      } else if (c === rangeStart) {
+        ranges.push(braceEscape(c));
+      }
+      rangeStart = "";
+      i++;
+      continue;
+    }
+    if (glob.startsWith("-]", i + 1)) {
+      ranges.push(braceEscape(c + "-"));
+      i += 2;
+      continue;
+    }
+    if (glob.startsWith("-", i + 1)) {
+      rangeStart = c;
+      i += 2;
+      continue;
+    }
+    ranges.push(braceEscape(c));
+    i++;
+  }
+  if (endPos < i) {
+    return ["", false, 0, false];
+  }
+  if (!ranges.length && !negs.length) {
+    return ["$.", false, glob.length - pos, true];
+  }
+  if (negs.length === 0 && ranges.length === 1 && /^\\?.$/.test(ranges[0]) && !negate) {
+    const r = ranges[0].length === 2 ? ranges[0].slice(-1) : ranges[0];
+    return [regexpEscape(r), false, endPos - pos, false];
+  }
+  const sranges = "[" + (negate ? "^" : "") + rangesToString(ranges) + "]";
+  const snegs = "[" + (negate ? "" : "^") + rangesToString(negs) + "]";
+  const comb = ranges.length && negs.length ? "(" + sranges + "|" + snegs + ")" : ranges.length ? sranges : snegs;
+  return [comb, uflag, endPos - pos, true];
+};
+
+// node_modules/minimatch/dist/esm/unescape.js
+var unescape = (s, { windowsPathsNoEscape = false, magicalBraces = true } = {}) => {
+  if (magicalBraces) {
+    return windowsPathsNoEscape ? s.replace(/\[([^/\\])\]/g, "$1") : s.replace(/((?!\\).|^)\[([^/\\])\]/g, "$1$2").replace(/\\([^/])/g, "$1");
+  }
+  return windowsPathsNoEscape ? s.replace(/\[([^/\\{}])\]/g, "$1") : s.replace(/((?!\\).|^)\[([^/\\{}])\]/g, "$1$2").replace(/\\([^/{}])/g, "$1");
+};
+
+// node_modules/minimatch/dist/esm/ast.js
+var _a;
+var types = /* @__PURE__ */ new Set(["!", "?", "+", "*", "@"]);
+var isExtglobType = (c) => types.has(c);
+var isExtglobAST = (c) => isExtglobType(c.type);
+var adoptionMap = /* @__PURE__ */ new Map([
+  ["!", ["@"]],
+  ["?", ["?", "@"]],
+  ["@", ["@"]],
+  ["*", ["*", "+", "?", "@"]],
+  ["+", ["+", "@"]]
+]);
+var adoptionWithSpaceMap = /* @__PURE__ */ new Map([
+  ["!", ["?"]],
+  ["@", ["?"]],
+  ["+", ["?", "*"]]
+]);
+var adoptionAnyMap = /* @__PURE__ */ new Map([
+  ["!", ["?", "@"]],
+  ["?", ["?", "@"]],
+  ["@", ["?", "@"]],
+  ["*", ["*", "+", "?", "@"]],
+  ["+", ["+", "@", "?", "*"]]
+]);
+var usurpMap = /* @__PURE__ */ new Map([
+  ["!", /* @__PURE__ */ new Map([["!", "@"]])],
+  [
+    "?",
+    /* @__PURE__ */ new Map([
+      ["*", "*"],
+      ["+", "*"]
+    ])
+  ],
+  [
+    "@",
+    /* @__PURE__ */ new Map([
+      ["!", "!"],
+      ["?", "?"],
+      ["@", "@"],
+      ["*", "*"],
+      ["+", "+"]
+    ])
+  ],
+  [
+    "+",
+    /* @__PURE__ */ new Map([
+      ["?", "*"],
+      ["*", "*"]
+    ])
+  ]
+]);
+var startNoTraversal = "(?!(?:^|/)\\.\\.?(?:$|/))";
+var startNoDot = "(?!\\.)";
+var addPatternStart = /* @__PURE__ */ new Set(["[", "."]);
+var justDots = /* @__PURE__ */ new Set(["..", "."]);
+var reSpecials = new Set("().*{}+?[]^$\\!");
+var regExpEscape = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+var qmark = "[^/]";
+var star = qmark + "*?";
+var starNoEmpty = qmark + "+?";
+var ID = 0;
+var AST = class {
+  type;
+  #root;
+  #hasMagic;
+  #uflag = false;
+  #parts = [];
+  #parent;
+  #parentIndex;
+  #negs;
+  #filledNegs = false;
+  #options;
+  #toString;
+  // set to true if it's an extglob with no children
+  // (which really means one child of '')
+  #emptyExt = false;
+  id = ++ID;
+  get depth() {
+    return (this.#parent?.depth ?? -1) + 1;
+  }
+  [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
+    return {
+      "@@type": "AST",
+      id: this.id,
+      type: this.type,
+      root: this.#root.id,
+      parent: this.#parent?.id,
+      depth: this.depth,
+      partsLength: this.#parts.length,
+      parts: this.#parts
+    };
+  }
+  constructor(type, parent, options = {}) {
+    this.type = type;
+    if (type)
+      this.#hasMagic = true;
+    this.#parent = parent;
+    this.#root = this.#parent ? this.#parent.#root : this;
+    this.#options = this.#root === this ? options : this.#root.#options;
+    this.#negs = this.#root === this ? [] : this.#root.#negs;
+    if (type === "!" && !this.#root.#filledNegs)
+      this.#negs.push(this);
+    this.#parentIndex = this.#parent ? this.#parent.#parts.length : 0;
+  }
+  get hasMagic() {
+    if (this.#hasMagic !== void 0)
+      return this.#hasMagic;
+    for (const p of this.#parts) {
+      if (typeof p === "string")
+        continue;
+      if (p.type || p.hasMagic)
+        return this.#hasMagic = true;
+    }
+    return this.#hasMagic;
+  }
+  // reconstructs the pattern
+  toString() {
+    return this.#toString !== void 0 ? this.#toString : !this.type ? this.#toString = this.#parts.map((p) => String(p)).join("") : this.#toString = this.type + "(" + this.#parts.map((p) => String(p)).join("|") + ")";
+  }
+  #fillNegs() {
+    if (this !== this.#root)
+      throw new Error("should only call on root");
+    if (this.#filledNegs)
+      return this;
+    this.toString();
+    this.#filledNegs = true;
+    let n;
+    while (n = this.#negs.pop()) {
+      if (n.type !== "!")
+        continue;
+      let p = n;
+      let pp = p.#parent;
+      while (pp) {
+        for (let i = p.#parentIndex + 1; !pp.type && i < pp.#parts.length; i++) {
+          for (const part of n.#parts) {
+            if (typeof part === "string") {
+              throw new Error("string part in extglob AST??");
+            }
+            part.copyIn(pp.#parts[i]);
+          }
+        }
+        p = pp;
+        pp = p.#parent;
+      }
+    }
+    return this;
+  }
+  push(...parts) {
+    for (const p of parts) {
+      if (p === "")
+        continue;
+      if (typeof p !== "string" && !(p instanceof _a && p.#parent === this)) {
+        throw new Error("invalid part: " + p);
+      }
+      this.#parts.push(p);
+    }
+  }
+  toJSON() {
+    const ret = this.type === null ? this.#parts.slice().map((p) => typeof p === "string" ? p : p.toJSON()) : [this.type, ...this.#parts.map((p) => p.toJSON())];
+    if (this.isStart() && !this.type)
+      ret.unshift([]);
+    if (this.isEnd() && (this === this.#root || this.#root.#filledNegs && this.#parent?.type === "!")) {
+      ret.push({});
+    }
+    return ret;
+  }
+  isStart() {
+    if (this.#root === this)
+      return true;
+    if (!this.#parent?.isStart())
+      return false;
+    if (this.#parentIndex === 0)
+      return true;
+    const p = this.#parent;
+    for (let i = 0; i < this.#parentIndex; i++) {
+      const pp = p.#parts[i];
+      if (!(pp instanceof _a && pp.type === "!")) {
+        return false;
+      }
+    }
+    return true;
+  }
+  isEnd() {
+    if (this.#root === this)
+      return true;
+    if (this.#parent?.type === "!")
+      return true;
+    if (!this.#parent?.isEnd())
+      return false;
+    if (!this.type)
+      return this.#parent?.isEnd();
+    const pl = this.#parent ? this.#parent.#parts.length : 0;
+    return this.#parentIndex === pl - 1;
+  }
+  copyIn(part) {
+    if (typeof part === "string")
+      this.push(part);
+    else
+      this.push(part.clone(this));
+  }
+  clone(parent) {
+    const c = new _a(this.type, parent);
+    for (const p of this.#parts) {
+      c.copyIn(p);
+    }
+    return c;
+  }
+  static #parseAST(str, ast, pos, opt, extDepth) {
+    const maxDepth = opt.maxExtglobRecursion ?? 2;
+    let escaping = false;
+    let inBrace = false;
+    let braceStart = -1;
+    let braceNeg = false;
+    if (ast.type === null) {
+      let i2 = pos;
+      let acc2 = "";
+      while (i2 < str.length) {
+        const c = str.charAt(i2++);
+        if (escaping || c === "\\") {
+          escaping = !escaping;
+          acc2 += c;
+          continue;
+        }
+        if (inBrace) {
+          if (i2 === braceStart + 1) {
+            if (c === "^" || c === "!") {
+              braceNeg = true;
+            }
+          } else if (c === "]" && !(i2 === braceStart + 2 && braceNeg)) {
+            inBrace = false;
+          }
+          acc2 += c;
+          continue;
+        } else if (c === "[") {
+          inBrace = true;
+          braceStart = i2;
+          braceNeg = false;
+          acc2 += c;
+          continue;
+        }
+        const doRecurse = !opt.noext && isExtglobType(c) && str.charAt(i2) === "(" && extDepth <= maxDepth;
+        if (doRecurse) {
+          ast.push(acc2);
+          acc2 = "";
+          const ext2 = new _a(c, ast);
+          i2 = _a.#parseAST(str, ext2, i2, opt, extDepth + 1);
+          ast.push(ext2);
+          continue;
+        }
+        acc2 += c;
+      }
+      ast.push(acc2);
+      return i2;
+    }
+    let i = pos + 1;
+    let part = new _a(null, ast);
+    const parts = [];
+    let acc = "";
+    while (i < str.length) {
+      const c = str.charAt(i++);
+      if (escaping || c === "\\") {
+        escaping = !escaping;
+        acc += c;
+        continue;
+      }
+      if (inBrace) {
+        if (i === braceStart + 1) {
+          if (c === "^" || c === "!") {
+            braceNeg = true;
+          }
+        } else if (c === "]" && !(i === braceStart + 2 && braceNeg)) {
+          inBrace = false;
+        }
+        acc += c;
+        continue;
+      } else if (c === "[") {
+        inBrace = true;
+        braceStart = i;
+        braceNeg = false;
+        acc += c;
+        continue;
+      }
+      const doRecurse = !opt.noext && isExtglobType(c) && str.charAt(i) === "(" && /* c8 ignore start - the maxDepth is sufficient here */
+      (extDepth <= maxDepth || ast && ast.#canAdoptType(c));
+      if (doRecurse) {
+        const depthAdd = ast && ast.#canAdoptType(c) ? 0 : 1;
+        part.push(acc);
+        acc = "";
+        const ext2 = new _a(c, part);
+        part.push(ext2);
+        i = _a.#parseAST(str, ext2, i, opt, extDepth + depthAdd);
+        continue;
+      }
+      if (c === "|") {
+        part.push(acc);
+        acc = "";
+        parts.push(part);
+        part = new _a(null, ast);
+        continue;
+      }
+      if (c === ")") {
+        if (acc === "" && ast.#parts.length === 0) {
+          ast.#emptyExt = true;
+        }
+        part.push(acc);
+        acc = "";
+        ast.push(...parts, part);
+        return i;
+      }
+      acc += c;
+    }
+    ast.type = null;
+    ast.#hasMagic = void 0;
+    ast.#parts = [str.substring(pos - 1)];
+    return i;
+  }
+  #canAdoptWithSpace(child) {
+    return this.#canAdopt(child, adoptionWithSpaceMap);
+  }
+  #canAdopt(child, map = adoptionMap) {
+    if (!child || typeof child !== "object" || child.type !== null || child.#parts.length !== 1 || this.type === null) {
+      return false;
+    }
+    const gc = child.#parts[0];
+    if (!gc || typeof gc !== "object" || gc.type === null) {
+      return false;
+    }
+    return this.#canAdoptType(gc.type, map);
+  }
+  #canAdoptType(c, map = adoptionAnyMap) {
+    return !!map.get(this.type)?.includes(c);
+  }
+  #adoptWithSpace(child, index) {
+    const gc = child.#parts[0];
+    const blank = new _a(null, gc, this.options);
+    blank.#parts.push("");
+    gc.push(blank);
+    this.#adopt(child, index);
+  }
+  #adopt(child, index) {
+    const gc = child.#parts[0];
+    this.#parts.splice(index, 1, ...gc.#parts);
+    for (const p of gc.#parts) {
+      if (typeof p === "object")
+        p.#parent = this;
+    }
+    this.#toString = void 0;
+  }
+  #canUsurpType(c) {
+    const m = usurpMap.get(this.type);
+    return !!m?.has(c);
+  }
+  #canUsurp(child) {
+    if (!child || typeof child !== "object" || child.type !== null || child.#parts.length !== 1 || this.type === null || this.#parts.length !== 1) {
+      return false;
+    }
+    const gc = child.#parts[0];
+    if (!gc || typeof gc !== "object" || gc.type === null) {
+      return false;
+    }
+    return this.#canUsurpType(gc.type);
+  }
+  #usurp(child) {
+    const m = usurpMap.get(this.type);
+    const gc = child.#parts[0];
+    const nt = m?.get(gc.type);
+    if (!nt)
+      return false;
+    this.#parts = gc.#parts;
+    for (const p of this.#parts) {
+      if (typeof p === "object") {
+        p.#parent = this;
+      }
+    }
+    this.type = nt;
+    this.#toString = void 0;
+    this.#emptyExt = false;
+  }
+  static fromGlob(pattern, options = {}) {
+    const ast = new _a(null, void 0, options);
+    _a.#parseAST(pattern, ast, 0, options, 0);
+    return ast;
+  }
+  // returns the regular expression if there's magic, or the unescaped
+  // string if not.
+  toMMPattern() {
+    if (this !== this.#root)
+      return this.#root.toMMPattern();
+    const glob = this.toString();
+    const [re, body, hasMagic, uflag] = this.toRegExpSource();
+    const anyMagic = hasMagic || this.#hasMagic || this.#options.nocase && !this.#options.nocaseMagicOnly && glob.toUpperCase() !== glob.toLowerCase();
+    if (!anyMagic) {
+      return body;
+    }
+    const flags = (this.#options.nocase ? "i" : "") + (uflag ? "u" : "");
+    return Object.assign(new RegExp(`^${re}$`, flags), {
+      _src: re,
+      _glob: glob
+    });
+  }
+  get options() {
+    return this.#options;
+  }
+  // returns the string match, the regexp source, whether there's magic
+  // in the regexp (so a regular expression is required) and whether or
+  // not the uflag is needed for the regular expression (for posix classes)
+  // TODO: instead of injecting the start/end at this point, just return
+  // the BODY of the regexp, along with the start/end portions suitable
+  // for binding the start/end in either a joined full-path makeRe context
+  // (where we bind to (^|/), or a standalone matchPart context (where
+  // we bind to ^, and not /).  Otherwise slashes get duped!
+  //
+  // In part-matching mode, the start is:
+  // - if not isStart: nothing
+  // - if traversal possible, but not allowed: ^(?!\.\.?$)
+  // - if dots allowed or not possible: ^
+  // - if dots possible and not allowed: ^(?!\.)
+  // end is:
+  // - if not isEnd(): nothing
+  // - else: $
+  //
+  // In full-path matching mode, we put the slash at the START of the
+  // pattern, so start is:
+  // - if first pattern: same as part-matching mode
+  // - if not isStart(): nothing
+  // - if traversal possible, but not allowed: /(?!\.\.?(?:$|/))
+  // - if dots allowed or not possible: /
+  // - if dots possible and not allowed: /(?!\.)
+  // end is:
+  // - if last pattern, same as part-matching mode
+  // - else nothing
+  //
+  // Always put the (?:$|/) on negated tails, though, because that has to be
+  // there to bind the end of the negated pattern portion, and it's easier to
+  // just stick it in now rather than try to inject it later in the middle of
+  // the pattern.
+  //
+  // We can just always return the same end, and leave it up to the caller
+  // to know whether it's going to be used joined or in parts.
+  // And, if the start is adjusted slightly, can do the same there:
+  // - if not isStart: nothing
+  // - if traversal possible, but not allowed: (?:/|^)(?!\.\.?$)
+  // - if dots allowed or not possible: (?:/|^)
+  // - if dots possible and not allowed: (?:/|^)(?!\.)
+  //
+  // But it's better to have a simpler binding without a conditional, for
+  // performance, so probably better to return both start options.
+  //
+  // Then the caller just ignores the end if it's not the first pattern,
+  // and the start always gets applied.
+  //
+  // But that's always going to be $ if it's the ending pattern, or nothing,
+  // so the caller can just attach $ at the end of the pattern when building.
+  //
+  // So the todo is:
+  // - better detect what kind of start is needed
+  // - return both flavors of starting pattern
+  // - attach $ at the end of the pattern when creating the actual RegExp
+  //
+  // Ah, but wait, no, that all only applies to the root when the first pattern
+  // is not an extglob. If the first pattern IS an extglob, then we need all
+  // that dot prevention biz to live in the extglob portions, because eg
+  // +(*|.x*) can match .xy but not .yx.
+  //
+  // So, return the two flavors if it's #root and the first child is not an
+  // AST, otherwise leave it to the child AST to handle it, and there,
+  // use the (?:^|/) style of start binding.
+  //
+  // Even simplified further:
+  // - Since the start for a join is eg /(?!\.) and the start for a part
+  // is ^(?!\.), we can just prepend (?!\.) to the pattern (either root
+  // or start or whatever) and prepend ^ or / at the Regexp construction.
+  toRegExpSource(allowDot) {
+    const dot = allowDot ?? !!this.#options.dot;
+    if (this.#root === this) {
+      this.#flatten();
+      this.#fillNegs();
+    }
+    if (!isExtglobAST(this)) {
+      const noEmpty = this.isStart() && this.isEnd() && !this.#parts.some((s) => typeof s !== "string");
+      const src = this.#parts.map((p) => {
+        const [re, _, hasMagic, uflag] = typeof p === "string" ? _a.#parseGlob(p, this.#hasMagic, noEmpty) : p.toRegExpSource(allowDot);
+        this.#hasMagic = this.#hasMagic || hasMagic;
+        this.#uflag = this.#uflag || uflag;
+        return re;
+      }).join("");
+      let start2 = "";
+      if (this.isStart()) {
+        if (typeof this.#parts[0] === "string") {
+          const dotTravAllowed = this.#parts.length === 1 && justDots.has(this.#parts[0]);
+          if (!dotTravAllowed) {
+            const aps = addPatternStart;
+            const needNoTrav = (
+              // dots are allowed, and the pattern starts with [ or .
+              dot && aps.has(src.charAt(0)) || // the pattern starts with \., and then [ or .
+              src.startsWith("\\.") && aps.has(src.charAt(2)) || // the pattern starts with \.\., and then [ or .
+              src.startsWith("\\.\\.") && aps.has(src.charAt(4))
+            );
+            const needNoDot = !dot && !allowDot && aps.has(src.charAt(0));
+            start2 = needNoTrav ? startNoTraversal : needNoDot ? startNoDot : "";
+          }
+        }
+      }
+      let end = "";
+      if (this.isEnd() && this.#root.#filledNegs && this.#parent?.type === "!") {
+        end = "(?:$|\\/)";
+      }
+      const final2 = start2 + src + end;
+      return [
+        final2,
+        unescape(src),
+        this.#hasMagic = !!this.#hasMagic,
+        this.#uflag
+      ];
+    }
+    const repeated = this.type === "*" || this.type === "+";
+    const start = this.type === "!" ? "(?:(?!(?:" : "(?:";
+    let body = this.#partsToRegExp(dot);
+    if (this.isStart() && this.isEnd() && !body && this.type !== "!") {
+      const s = this.toString();
+      const me = this;
+      me.#parts = [s];
+      me.type = null;
+      me.#hasMagic = void 0;
+      return [s, unescape(this.toString()), false, false];
+    }
+    let bodyDotAllowed = !repeated || allowDot || dot || !startNoDot ? "" : this.#partsToRegExp(true);
+    if (bodyDotAllowed === body) {
+      bodyDotAllowed = "";
+    }
+    if (bodyDotAllowed) {
+      body = `(?:${body})(?:${bodyDotAllowed})*?`;
+    }
+    let final = "";
+    if (this.type === "!" && this.#emptyExt) {
+      final = (this.isStart() && !dot ? startNoDot : "") + starNoEmpty;
+    } else {
+      const close = this.type === "!" ? (
+        // !() must match something,but !(x) can match ''
+        "))" + (this.isStart() && !dot && !allowDot ? startNoDot : "") + star + ")"
+      ) : this.type === "@" ? ")" : this.type === "?" ? ")?" : this.type === "+" && bodyDotAllowed ? ")" : this.type === "*" && bodyDotAllowed ? `)?` : `)${this.type}`;
+      final = start + body + close;
+    }
+    return [
+      final,
+      unescape(body),
+      this.#hasMagic = !!this.#hasMagic,
+      this.#uflag
+    ];
+  }
+  #flatten() {
+    if (!isExtglobAST(this)) {
+      for (const p of this.#parts) {
+        if (typeof p === "object") {
+          p.#flatten();
+        }
+      }
+    } else {
+      let iterations = 0;
+      let done = false;
+      do {
+        done = true;
+        for (let i = 0; i < this.#parts.length; i++) {
+          const c = this.#parts[i];
+          if (typeof c === "object") {
+            c.#flatten();
+            if (this.#canAdopt(c)) {
+              done = false;
+              this.#adopt(c, i);
+            } else if (this.#canAdoptWithSpace(c)) {
+              done = false;
+              this.#adoptWithSpace(c, i);
+            } else if (this.#canUsurp(c)) {
+              done = false;
+              this.#usurp(c);
+            }
+          }
+        }
+      } while (!done && ++iterations < 10);
+    }
+    this.#toString = void 0;
+  }
+  #partsToRegExp(dot) {
+    return this.#parts.map((p) => {
+      if (typeof p === "string") {
+        throw new Error("string type in extglob ast??");
+      }
+      const [re, _, _hasMagic, uflag] = p.toRegExpSource(dot);
+      this.#uflag = this.#uflag || uflag;
+      return re;
+    }).filter((p) => !(this.isStart() && this.isEnd()) || !!p).join("|");
+  }
+  static #parseGlob(glob, hasMagic, noEmpty = false) {
+    let escaping = false;
+    let re = "";
+    let uflag = false;
+    let inStar = false;
+    for (let i = 0; i < glob.length; i++) {
+      const c = glob.charAt(i);
+      if (escaping) {
+        escaping = false;
+        re += (reSpecials.has(c) ? "\\" : "") + c;
+        continue;
+      }
+      if (c === "*") {
+        if (inStar)
+          continue;
+        inStar = true;
+        re += noEmpty && /^[*]+$/.test(glob) ? starNoEmpty : star;
+        hasMagic = true;
+        continue;
+      } else {
+        inStar = false;
+      }
+      if (c === "\\") {
+        if (i === glob.length - 1) {
+          re += "\\\\";
+        } else {
+          escaping = true;
+        }
+        continue;
+      }
+      if (c === "[") {
+        const [src, needUflag, consumed, magic] = parseClass(glob, i);
+        if (consumed) {
+          re += src;
+          uflag = uflag || needUflag;
+          i += consumed - 1;
+          hasMagic = hasMagic || magic;
+          continue;
+        }
+      }
+      if (c === "?") {
+        re += qmark;
+        hasMagic = true;
+        continue;
+      }
+      re += regExpEscape(c);
+    }
+    return [re, unescape(glob), !!hasMagic, uflag];
+  }
+};
+_a = AST;
+
+// node_modules/minimatch/dist/esm/escape.js
+var escape = (s, { windowsPathsNoEscape = false, magicalBraces = false } = {}) => {
+  if (magicalBraces) {
+    return windowsPathsNoEscape ? s.replace(/[?*()[\]{}]/g, "[$&]") : s.replace(/[?*()[\]\\{}]/g, "\\$&");
+  }
+  return windowsPathsNoEscape ? s.replace(/[?*()[\]]/g, "[$&]") : s.replace(/[?*()[\]\\]/g, "\\$&");
+};
+
+// node_modules/minimatch/dist/esm/index.js
+var minimatch = (p, pattern, options = {}) => {
+  assertValidPattern(pattern);
+  if (!options.nocomment && pattern.charAt(0) === "#") {
+    return false;
+  }
+  return new Minimatch(pattern, options).match(p);
+};
+var starDotExtRE = /^\*+([^+@!?*[(]*)$/;
+var starDotExtTest = (ext2) => (f) => !f.startsWith(".") && f.endsWith(ext2);
+var starDotExtTestDot = (ext2) => (f) => f.endsWith(ext2);
+var starDotExtTestNocase = (ext2) => {
+  ext2 = ext2.toLowerCase();
+  return (f) => !f.startsWith(".") && f.toLowerCase().endsWith(ext2);
+};
+var starDotExtTestNocaseDot = (ext2) => {
+  ext2 = ext2.toLowerCase();
+  return (f) => f.toLowerCase().endsWith(ext2);
+};
+var starDotStarRE = /^\*+\.\*+$/;
+var starDotStarTest = (f) => !f.startsWith(".") && f.includes(".");
+var starDotStarTestDot = (f) => f !== "." && f !== ".." && f.includes(".");
+var dotStarRE = /^\.\*+$/;
+var dotStarTest = (f) => f !== "." && f !== ".." && f.startsWith(".");
+var starRE = /^\*+$/;
+var starTest = (f) => f.length !== 0 && !f.startsWith(".");
+var starTestDot = (f) => f.length !== 0 && f !== "." && f !== "..";
+var qmarksRE = /^\?+([^+@!?*[(]*)?$/;
+var qmarksTestNocase = ([$0, ext2 = ""]) => {
+  const noext = qmarksTestNoExt([$0]);
+  if (!ext2)
+    return noext;
+  ext2 = ext2.toLowerCase();
+  return (f) => noext(f) && f.toLowerCase().endsWith(ext2);
+};
+var qmarksTestNocaseDot = ([$0, ext2 = ""]) => {
+  const noext = qmarksTestNoExtDot([$0]);
+  if (!ext2)
+    return noext;
+  ext2 = ext2.toLowerCase();
+  return (f) => noext(f) && f.toLowerCase().endsWith(ext2);
+};
+var qmarksTestDot = ([$0, ext2 = ""]) => {
+  const noext = qmarksTestNoExtDot([$0]);
+  return !ext2 ? noext : (f) => noext(f) && f.endsWith(ext2);
+};
+var qmarksTest = ([$0, ext2 = ""]) => {
+  const noext = qmarksTestNoExt([$0]);
+  return !ext2 ? noext : (f) => noext(f) && f.endsWith(ext2);
+};
+var qmarksTestNoExt = ([$0]) => {
+  const len = $0.length;
+  return (f) => f.length === len && !f.startsWith(".");
+};
+var qmarksTestNoExtDot = ([$0]) => {
+  const len = $0.length;
+  return (f) => f.length === len && f !== "." && f !== "..";
+};
+var defaultPlatform = typeof process === "object" && process ? typeof process.env === "object" && process.env && process.env.__MINIMATCH_TESTING_PLATFORM__ || process.platform : "posix";
+var path = {
+  win32: { sep: "\\" },
+  posix: { sep: "/" }
+};
+var sep = defaultPlatform === "win32" ? path.win32.sep : path.posix.sep;
+minimatch.sep = sep;
+var GLOBSTAR = /* @__PURE__ */ Symbol("globstar **");
+minimatch.GLOBSTAR = GLOBSTAR;
+var qmark2 = "[^/]";
+var star2 = qmark2 + "*?";
+var twoStarDot = "(?:(?!(?:\\/|^)(?:\\.{1,2})($|\\/)).)*?";
+var twoStarNoDot = "(?:(?!(?:\\/|^)\\.).)*?";
+var filter = (pattern, options = {}) => (p) => minimatch(p, pattern, options);
+minimatch.filter = filter;
+var ext = (a, b = {}) => Object.assign({}, a, b);
+var defaults = (def) => {
+  if (!def || typeof def !== "object" || !Object.keys(def).length) {
+    return minimatch;
+  }
+  const orig = minimatch;
+  const m = (p, pattern, options = {}) => orig(p, pattern, ext(def, options));
+  return Object.assign(m, {
+    Minimatch: class Minimatch extends orig.Minimatch {
+      constructor(pattern, options = {}) {
+        super(pattern, ext(def, options));
+      }
+      static defaults(options) {
+        return orig.defaults(ext(def, options)).Minimatch;
+      }
+    },
+    AST: class AST extends orig.AST {
+      /* c8 ignore start */
+      constructor(type, parent, options = {}) {
+        super(type, parent, ext(def, options));
+      }
+      /* c8 ignore stop */
+      static fromGlob(pattern, options = {}) {
+        return orig.AST.fromGlob(pattern, ext(def, options));
+      }
+    },
+    unescape: (s, options = {}) => orig.unescape(s, ext(def, options)),
+    escape: (s, options = {}) => orig.escape(s, ext(def, options)),
+    filter: (pattern, options = {}) => orig.filter(pattern, ext(def, options)),
+    defaults: (options) => orig.defaults(ext(def, options)),
+    makeRe: (pattern, options = {}) => orig.makeRe(pattern, ext(def, options)),
+    braceExpand: (pattern, options = {}) => orig.braceExpand(pattern, ext(def, options)),
+    match: (list, pattern, options = {}) => orig.match(list, pattern, ext(def, options)),
+    sep: orig.sep,
+    GLOBSTAR
+  });
+};
+minimatch.defaults = defaults;
+var braceExpand = (pattern, options = {}) => {
+  assertValidPattern(pattern);
+  if (options.nobrace || !/\{(?:(?!\{).)*\}/.test(pattern)) {
+    return [pattern];
+  }
+  return expand(pattern, { max: options.braceExpandMax });
+};
+minimatch.braceExpand = braceExpand;
+var makeRe = (pattern, options = {}) => new Minimatch(pattern, options).makeRe();
+minimatch.makeRe = makeRe;
+var match = (list, pattern, options = {}) => {
+  const mm = new Minimatch(pattern, options);
+  list = list.filter((f) => mm.match(f));
+  if (mm.options.nonull && !list.length) {
+    list.push(pattern);
+  }
+  return list;
+};
+minimatch.match = match;
+var globMagic = /[?*]|[+@!]\(.*?\)|\[|\]/;
+var regExpEscape2 = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+var Minimatch = class {
+  options;
+  set;
+  pattern;
+  windowsPathsNoEscape;
+  nonegate;
+  negate;
+  comment;
+  empty;
+  preserveMultipleSlashes;
+  partial;
+  globSet;
+  globParts;
+  nocase;
+  isWindows;
+  platform;
+  windowsNoMagicRoot;
+  maxGlobstarRecursion;
+  regexp;
+  constructor(pattern, options = {}) {
+    assertValidPattern(pattern);
+    options = options || {};
+    this.options = options;
+    this.maxGlobstarRecursion = options.maxGlobstarRecursion ?? 200;
+    this.pattern = pattern;
+    this.platform = options.platform || defaultPlatform;
+    this.isWindows = this.platform === "win32";
+    const awe = "allowWindowsEscape";
+    this.windowsPathsNoEscape = !!options.windowsPathsNoEscape || options[awe] === false;
+    if (this.windowsPathsNoEscape) {
+      this.pattern = this.pattern.replace(/\\/g, "/");
+    }
+    this.preserveMultipleSlashes = !!options.preserveMultipleSlashes;
+    this.regexp = null;
+    this.negate = false;
+    this.nonegate = !!options.nonegate;
+    this.comment = false;
+    this.empty = false;
+    this.partial = !!options.partial;
+    this.nocase = !!this.options.nocase;
+    this.windowsNoMagicRoot = options.windowsNoMagicRoot !== void 0 ? options.windowsNoMagicRoot : !!(this.isWindows && this.nocase);
+    this.globSet = [];
+    this.globParts = [];
+    this.set = [];
+    this.make();
+  }
+  hasMagic() {
+    if (this.options.magicalBraces && this.set.length > 1) {
+      return true;
+    }
+    for (const pattern of this.set) {
+      for (const part of pattern) {
+        if (typeof part !== "string")
+          return true;
+      }
+    }
+    return false;
+  }
+  debug(..._) {
+  }
+  make() {
+    const pattern = this.pattern;
+    const options = this.options;
+    if (!options.nocomment && pattern.charAt(0) === "#") {
+      this.comment = true;
+      return;
+    }
+    if (!pattern) {
+      this.empty = true;
+      return;
+    }
+    this.parseNegate();
+    this.globSet = [...new Set(this.braceExpand())];
+    if (options.debug) {
+      this.debug = (...args) => console.error(...args);
+    }
+    this.debug(this.pattern, this.globSet);
+    const rawGlobParts = this.globSet.map((s) => this.slashSplit(s));
+    this.globParts = this.preprocess(rawGlobParts);
+    this.debug(this.pattern, this.globParts);
+    let set = this.globParts.map((s, _, __) => {
+      if (this.isWindows && this.windowsNoMagicRoot) {
+        const isUNC = s[0] === "" && s[1] === "" && (s[2] === "?" || !globMagic.test(s[2])) && !globMagic.test(s[3]);
+        const isDrive = /^[a-z]:/i.test(s[0]);
+        if (isUNC) {
+          return [
+            ...s.slice(0, 4),
+            ...s.slice(4).map((ss) => this.parse(ss))
+          ];
+        } else if (isDrive) {
+          return [s[0], ...s.slice(1).map((ss) => this.parse(ss))];
+        }
+      }
+      return s.map((ss) => this.parse(ss));
+    });
+    this.debug(this.pattern, set);
+    this.set = set.filter((s) => s.indexOf(false) === -1);
+    if (this.isWindows) {
+      for (let i = 0; i < this.set.length; i++) {
+        const p = this.set[i];
+        if (p[0] === "" && p[1] === "" && this.globParts[i][2] === "?" && typeof p[3] === "string" && /^[a-z]:$/i.test(p[3])) {
+          p[2] = "?";
+        }
+      }
+    }
+    this.debug(this.pattern, this.set);
+  }
+  // various transforms to equivalent pattern sets that are
+  // faster to process in a filesystem walk.  The goal is to
+  // eliminate what we can, and push all ** patterns as far
+  // to the right as possible, even if it increases the number
+  // of patterns that we have to process.
+  preprocess(globParts) {
+    if (this.options.noglobstar) {
+      for (const partset of globParts) {
+        for (let j = 0; j < partset.length; j++) {
+          if (partset[j] === "**") {
+            partset[j] = "*";
+          }
+        }
+      }
+    }
+    const { optimizationLevel = 1 } = this.options;
+    if (optimizationLevel >= 2) {
+      globParts = this.firstPhasePreProcess(globParts);
+      globParts = this.secondPhasePreProcess(globParts);
+    } else if (optimizationLevel >= 1) {
+      globParts = this.levelOneOptimize(globParts);
+    } else {
+      globParts = this.adjascentGlobstarOptimize(globParts);
+    }
+    return globParts;
+  }
+  // just get rid of adjascent ** portions
+  adjascentGlobstarOptimize(globParts) {
+    return globParts.map((parts) => {
+      let gs = -1;
+      while (-1 !== (gs = parts.indexOf("**", gs + 1))) {
+        let i = gs;
+        while (parts[i + 1] === "**") {
+          i++;
+        }
+        if (i !== gs) {
+          parts.splice(gs, i - gs);
+        }
+      }
+      return parts;
+    });
+  }
+  // get rid of adjascent ** and resolve .. portions
+  levelOneOptimize(globParts) {
+    return globParts.map((parts) => {
+      parts = parts.reduce((set, part) => {
+        const prev = set[set.length - 1];
+        if (part === "**" && prev === "**") {
+          return set;
+        }
+        if (part === "..") {
+          if (prev && prev !== ".." && prev !== "." && prev !== "**") {
+            set.pop();
+            return set;
+          }
+        }
+        set.push(part);
+        return set;
+      }, []);
+      return parts.length === 0 ? [""] : parts;
+    });
+  }
+  levelTwoFileOptimize(parts) {
+    if (!Array.isArray(parts)) {
+      parts = this.slashSplit(parts);
+    }
+    let didSomething = false;
+    do {
+      didSomething = false;
+      if (!this.preserveMultipleSlashes) {
+        for (let i = 1; i < parts.length - 1; i++) {
+          const p = parts[i];
+          if (i === 1 && p === "" && parts[0] === "")
+            continue;
+          if (p === "." || p === "") {
+            didSomething = true;
+            parts.splice(i, 1);
+            i--;
+          }
+        }
+        if (parts[0] === "." && parts.length === 2 && (parts[1] === "." || parts[1] === "")) {
+          didSomething = true;
+          parts.pop();
+        }
+      }
+      let dd = 0;
+      while (-1 !== (dd = parts.indexOf("..", dd + 1))) {
+        const p = parts[dd - 1];
+        if (p && p !== "." && p !== ".." && p !== "**" && !(this.isWindows && /^[a-z]:$/i.test(p))) {
+          didSomething = true;
+          parts.splice(dd - 1, 2);
+          dd -= 2;
+        }
+      }
+    } while (didSomething);
+    return parts.length === 0 ? [""] : parts;
+  }
+  // First phase: single-pattern processing
+  // <pre> is 1 or more portions
+  // <rest> is 1 or more portions
+  // <p> is any portion other than ., .., '', or **
+  // <e> is . or ''
+  //
+  // **/.. is *brutal* for filesystem walking performance, because
+  // it effectively resets the recursive walk each time it occurs,
+  // and ** cannot be reduced out by a .. pattern part like a regexp
+  // or most strings (other than .., ., and '') can be.
+  //
+  // <pre>/**/../<p>/<p>/<rest> -> {<pre>/../<p>/<p>/<rest>,<pre>/**/<p>/<p>/<rest>}
+  // <pre>/<e>/<rest> -> <pre>/<rest>
+  // <pre>/<p>/../<rest> -> <pre>/<rest>
+  // **/**/<rest> -> **/<rest>
+  //
+  // **/*/<rest> -> */**/<rest> <== not valid because ** doesn't follow
+  // this WOULD be allowed if ** did follow symlinks, or * didn't
+  firstPhasePreProcess(globParts) {
+    let didSomething = false;
+    do {
+      didSomething = false;
+      for (let parts of globParts) {
+        let gs = -1;
+        while (-1 !== (gs = parts.indexOf("**", gs + 1))) {
+          let gss = gs;
+          while (parts[gss + 1] === "**") {
+            gss++;
+          }
+          if (gss > gs) {
+            parts.splice(gs + 1, gss - gs);
+          }
+          let next = parts[gs + 1];
+          const p = parts[gs + 2];
+          const p2 = parts[gs + 3];
+          if (next !== "..")
+            continue;
+          if (!p || p === "." || p === ".." || !p2 || p2 === "." || p2 === "..") {
+            continue;
+          }
+          didSomething = true;
+          parts.splice(gs, 1);
+          const other = parts.slice(0);
+          other[gs] = "**";
+          globParts.push(other);
+          gs--;
+        }
+        if (!this.preserveMultipleSlashes) {
+          for (let i = 1; i < parts.length - 1; i++) {
+            const p = parts[i];
+            if (i === 1 && p === "" && parts[0] === "")
+              continue;
+            if (p === "." || p === "") {
+              didSomething = true;
+              parts.splice(i, 1);
+              i--;
+            }
+          }
+          if (parts[0] === "." && parts.length === 2 && (parts[1] === "." || parts[1] === "")) {
+            didSomething = true;
+            parts.pop();
+          }
+        }
+        let dd = 0;
+        while (-1 !== (dd = parts.indexOf("..", dd + 1))) {
+          const p = parts[dd - 1];
+          if (p && p !== "." && p !== ".." && p !== "**") {
+            didSomething = true;
+            const needDot = dd === 1 && parts[dd + 1] === "**";
+            const splin = needDot ? ["."] : [];
+            parts.splice(dd - 1, 2, ...splin);
+            if (parts.length === 0)
+              parts.push("");
+            dd -= 2;
+          }
+        }
+      }
+    } while (didSomething);
+    return globParts;
+  }
+  // second phase: multi-pattern dedupes
+  // {<pre>/*/<rest>,<pre>/<p>/<rest>} -> <pre>/*/<rest>
+  // {<pre>/<rest>,<pre>/<rest>} -> <pre>/<rest>
+  // {<pre>/**/<rest>,<pre>/<rest>} -> <pre>/**/<rest>
+  //
+  // {<pre>/**/<rest>,<pre>/**/<p>/<rest>} -> <pre>/**/<rest>
+  // ^-- not valid because ** doens't follow symlinks
+  secondPhasePreProcess(globParts) {
+    for (let i = 0; i < globParts.length - 1; i++) {
+      for (let j = i + 1; j < globParts.length; j++) {
+        const matched = this.partsMatch(globParts[i], globParts[j], !this.preserveMultipleSlashes);
+        if (matched) {
+          globParts[i] = [];
+          globParts[j] = matched;
+          break;
+        }
+      }
+    }
+    return globParts.filter((gs) => gs.length);
+  }
+  partsMatch(a, b, emptyGSMatch = false) {
+    let ai = 0;
+    let bi = 0;
+    let result = [];
+    let which = "";
+    while (ai < a.length && bi < b.length) {
+      if (a[ai] === b[bi]) {
+        result.push(which === "b" ? b[bi] : a[ai]);
+        ai++;
+        bi++;
+      } else if (emptyGSMatch && a[ai] === "**" && b[bi] === a[ai + 1]) {
+        result.push(a[ai]);
+        ai++;
+      } else if (emptyGSMatch && b[bi] === "**" && a[ai] === b[bi + 1]) {
+        result.push(b[bi]);
+        bi++;
+      } else if (a[ai] === "*" && b[bi] && (this.options.dot || !b[bi].startsWith(".")) && b[bi] !== "**") {
+        if (which === "b")
+          return false;
+        which = "a";
+        result.push(a[ai]);
+        ai++;
+        bi++;
+      } else if (b[bi] === "*" && a[ai] && (this.options.dot || !a[ai].startsWith(".")) && a[ai] !== "**") {
+        if (which === "a")
+          return false;
+        which = "b";
+        result.push(b[bi]);
+        ai++;
+        bi++;
+      } else {
+        return false;
+      }
+    }
+    return a.length === b.length && result;
+  }
+  parseNegate() {
+    if (this.nonegate)
+      return;
+    const pattern = this.pattern;
+    let negate = false;
+    let negateOffset = 0;
+    for (let i = 0; i < pattern.length && pattern.charAt(i) === "!"; i++) {
+      negate = !negate;
+      negateOffset++;
+    }
+    if (negateOffset)
+      this.pattern = pattern.slice(negateOffset);
+    this.negate = negate;
+  }
+  // set partial to true to test if, for example,
+  // "/a/b" matches the start of "/*/b/*/d"
+  // Partial means, if you run out of file before you run
+  // out of pattern, then that's fine, as long as all
+  // the parts match.
+  matchOne(file, pattern, partial = false) {
+    let fileStartIndex = 0;
+    let patternStartIndex = 0;
+    if (this.isWindows) {
+      const fileDrive = typeof file[0] === "string" && /^[a-z]:$/i.test(file[0]);
+      const fileUNC = !fileDrive && file[0] === "" && file[1] === "" && file[2] === "?" && /^[a-z]:$/i.test(file[3]);
+      const patternDrive = typeof pattern[0] === "string" && /^[a-z]:$/i.test(pattern[0]);
+      const patternUNC = !patternDrive && pattern[0] === "" && pattern[1] === "" && pattern[2] === "?" && typeof pattern[3] === "string" && /^[a-z]:$/i.test(pattern[3]);
+      const fdi = fileUNC ? 3 : fileDrive ? 0 : void 0;
+      const pdi = patternUNC ? 3 : patternDrive ? 0 : void 0;
+      if (typeof fdi === "number" && typeof pdi === "number") {
+        const [fd, pd] = [
+          file[fdi],
+          pattern[pdi]
+        ];
+        if (fd.toLowerCase() === pd.toLowerCase()) {
+          pattern[pdi] = fd;
+          patternStartIndex = pdi;
+          fileStartIndex = fdi;
+        }
+      }
+    }
+    const { optimizationLevel = 1 } = this.options;
+    if (optimizationLevel >= 2) {
+      file = this.levelTwoFileOptimize(file);
+    }
+    if (pattern.includes(GLOBSTAR)) {
+      return this.#matchGlobstar(file, pattern, partial, fileStartIndex, patternStartIndex);
+    }
+    return this.#matchOne(file, pattern, partial, fileStartIndex, patternStartIndex);
+  }
+  #matchGlobstar(file, pattern, partial, fileIndex, patternIndex) {
+    const firstgs = pattern.indexOf(GLOBSTAR, patternIndex);
+    const lastgs = pattern.lastIndexOf(GLOBSTAR);
+    const [head, body, tail] = partial ? [
+      pattern.slice(patternIndex, firstgs),
+      pattern.slice(firstgs + 1),
+      []
+    ] : [
+      pattern.slice(patternIndex, firstgs),
+      pattern.slice(firstgs + 1, lastgs),
+      pattern.slice(lastgs + 1)
+    ];
+    if (head.length) {
+      const fileHead = file.slice(fileIndex, fileIndex + head.length);
+      if (!this.#matchOne(fileHead, head, partial, 0, 0)) {
+        return false;
+      }
+      fileIndex += head.length;
+      patternIndex += head.length;
+    }
+    let fileTailMatch = 0;
+    if (tail.length) {
+      if (tail.length + fileIndex > file.length)
+        return false;
+      let tailStart = file.length - tail.length;
+      if (this.#matchOne(file, tail, partial, tailStart, 0)) {
+        fileTailMatch = tail.length;
+      } else {
+        if (file[file.length - 1] !== "" || fileIndex + tail.length === file.length) {
+          return false;
+        }
+        tailStart--;
+        if (!this.#matchOne(file, tail, partial, tailStart, 0)) {
+          return false;
+        }
+        fileTailMatch = tail.length + 1;
+      }
+    }
+    if (!body.length) {
+      let sawSome = !!fileTailMatch;
+      for (let i2 = fileIndex; i2 < file.length - fileTailMatch; i2++) {
+        const f = String(file[i2]);
+        sawSome = true;
+        if (f === "." || f === ".." || !this.options.dot && f.startsWith(".")) {
+          return false;
+        }
+      }
+      return partial || sawSome;
+    }
+    const bodySegments = [[[], 0]];
+    let currentBody = bodySegments[0];
+    let nonGsParts = 0;
+    const nonGsPartsSums = [0];
+    for (const b of body) {
+      if (b === GLOBSTAR) {
+        nonGsPartsSums.push(nonGsParts);
+        currentBody = [[], 0];
+        bodySegments.push(currentBody);
+      } else {
+        currentBody[0].push(b);
+        nonGsParts++;
+      }
+    }
+    let i = bodySegments.length - 1;
+    const fileLength = file.length - fileTailMatch;
+    for (const b of bodySegments) {
+      b[1] = fileLength - (nonGsPartsSums[i--] + b[0].length);
+    }
+    return !!this.#matchGlobStarBodySections(file, bodySegments, fileIndex, 0, partial, 0, !!fileTailMatch);
+  }
+  // return false for "nope, not matching"
+  // return null for "not matching, cannot keep trying"
+  #matchGlobStarBodySections(file, bodySegments, fileIndex, bodyIndex, partial, globStarDepth, sawTail) {
+    const bs = bodySegments[bodyIndex];
+    if (!bs) {
+      for (let i = fileIndex; i < file.length; i++) {
+        sawTail = true;
+        const f = file[i];
+        if (f === "." || f === ".." || !this.options.dot && f.startsWith(".")) {
+          return false;
+        }
+      }
+      return sawTail;
+    }
+    const [body, after] = bs;
+    while (fileIndex <= after) {
+      const m = this.#matchOne(file.slice(0, fileIndex + body.length), body, partial, fileIndex, 0);
+      if (m && globStarDepth < this.maxGlobstarRecursion) {
+        const sub = this.#matchGlobStarBodySections(file, bodySegments, fileIndex + body.length, bodyIndex + 1, partial, globStarDepth + 1, sawTail);
+        if (sub !== false) {
+          return sub;
+        }
+      }
+      const f = file[fileIndex];
+      if (f === "." || f === ".." || !this.options.dot && f.startsWith(".")) {
+        return false;
+      }
+      fileIndex++;
+    }
+    return partial || null;
+  }
+  #matchOne(file, pattern, partial, fileIndex, patternIndex) {
+    let fi;
+    let pi;
+    let pl;
+    let fl;
+    for (fi = fileIndex, pi = patternIndex, fl = file.length, pl = pattern.length; fi < fl && pi < pl; fi++, pi++) {
+      this.debug("matchOne loop");
+      let p = pattern[pi];
+      let f = file[fi];
+      this.debug(pattern, p, f);
+      if (p === false || p === GLOBSTAR) {
+        return false;
+      }
+      let hit;
+      if (typeof p === "string") {
+        hit = f === p;
+        this.debug("string match", p, f, hit);
+      } else {
+        hit = p.test(f);
+        this.debug("pattern match", p, f, hit);
+      }
+      if (!hit)
+        return false;
+    }
+    if (fi === fl && pi === pl) {
+      return true;
+    } else if (fi === fl) {
+      return partial;
+    } else if (pi === pl) {
+      return fi === fl - 1 && file[fi] === "";
+    } else {
+      throw new Error("wtf?");
+    }
+  }
+  braceExpand() {
+    return braceExpand(this.pattern, this.options);
+  }
+  parse(pattern) {
+    assertValidPattern(pattern);
+    const options = this.options;
+    if (pattern === "**")
+      return GLOBSTAR;
+    if (pattern === "")
+      return "";
+    let m;
+    let fastTest = null;
+    if (m = pattern.match(starRE)) {
+      fastTest = options.dot ? starTestDot : starTest;
+    } else if (m = pattern.match(starDotExtRE)) {
+      fastTest = (options.nocase ? options.dot ? starDotExtTestNocaseDot : starDotExtTestNocase : options.dot ? starDotExtTestDot : starDotExtTest)(m[1]);
+    } else if (m = pattern.match(qmarksRE)) {
+      fastTest = (options.nocase ? options.dot ? qmarksTestNocaseDot : qmarksTestNocase : options.dot ? qmarksTestDot : qmarksTest)(m);
+    } else if (m = pattern.match(starDotStarRE)) {
+      fastTest = options.dot ? starDotStarTestDot : starDotStarTest;
+    } else if (m = pattern.match(dotStarRE)) {
+      fastTest = dotStarTest;
+    }
+    const re = AST.fromGlob(pattern, this.options).toMMPattern();
+    if (fastTest && typeof re === "object") {
+      Reflect.defineProperty(re, "test", { value: fastTest });
+    }
+    return re;
+  }
+  makeRe() {
+    if (this.regexp || this.regexp === false)
+      return this.regexp;
+    const set = this.set;
+    if (!set.length) {
+      this.regexp = false;
+      return this.regexp;
+    }
+    const options = this.options;
+    const twoStar = options.noglobstar ? star2 : options.dot ? twoStarDot : twoStarNoDot;
+    const flags = new Set(options.nocase ? ["i"] : []);
+    let re = set.map((pattern) => {
+      const pp = pattern.map((p) => {
+        if (p instanceof RegExp) {
+          for (const f of p.flags.split(""))
+            flags.add(f);
+        }
+        return typeof p === "string" ? regExpEscape2(p) : p === GLOBSTAR ? GLOBSTAR : p._src;
+      });
+      pp.forEach((p, i) => {
+        const next = pp[i + 1];
+        const prev = pp[i - 1];
+        if (p !== GLOBSTAR || prev === GLOBSTAR) {
+          return;
+        }
+        if (prev === void 0) {
+          if (next !== void 0 && next !== GLOBSTAR) {
+            pp[i + 1] = "(?:\\/|" + twoStar + "\\/)?" + next;
+          } else {
+            pp[i] = twoStar;
+          }
+        } else if (next === void 0) {
+          pp[i - 1] = prev + "(?:\\/|\\/" + twoStar + ")?";
+        } else if (next !== GLOBSTAR) {
+          pp[i - 1] = prev + "(?:\\/|\\/" + twoStar + "\\/)" + next;
+          pp[i + 1] = GLOBSTAR;
+        }
+      });
+      const filtered = pp.filter((p) => p !== GLOBSTAR);
+      if (this.partial && filtered.length >= 1) {
+        const prefixes = [];
+        for (let i = 1; i <= filtered.length; i++) {
+          prefixes.push(filtered.slice(0, i).join("/"));
+        }
+        return "(?:" + prefixes.join("|") + ")";
+      }
+      return filtered.join("/");
+    }).join("|");
+    const [open, close] = set.length > 1 ? ["(?:", ")"] : ["", ""];
+    re = "^" + open + re + close + "$";
+    if (this.partial) {
+      re = "^(?:\\/|" + open + re.slice(1, -1) + close + ")$";
+    }
+    if (this.negate)
+      re = "^(?!" + re + ").+$";
+    try {
+      this.regexp = new RegExp(re, [...flags].join(""));
+    } catch {
+      this.regexp = false;
+    }
+    return this.regexp;
+  }
+  slashSplit(p) {
+    if (this.preserveMultipleSlashes) {
+      return p.split("/");
+    } else if (this.isWindows && /^\/\/[^/]+/.test(p)) {
+      return ["", ...p.split(/\/+/)];
+    } else {
+      return p.split(/\/+/);
+    }
+  }
+  match(f, partial = this.partial) {
+    this.debug("match", f, this.pattern);
+    if (this.comment) {
+      return false;
+    }
+    if (this.empty) {
+      return f === "";
+    }
+    if (f === "/" && partial) {
+      return true;
+    }
+    const options = this.options;
+    if (this.isWindows) {
+      f = f.split("\\").join("/");
+    }
+    const ff = this.slashSplit(f);
+    this.debug(this.pattern, "split", ff);
+    const set = this.set;
+    this.debug(this.pattern, "set", set);
+    let filename = ff[ff.length - 1];
+    if (!filename) {
+      for (let i = ff.length - 2; !filename && i >= 0; i--) {
+        filename = ff[i];
+      }
+    }
+    for (const pattern of set) {
+      let file = ff;
+      if (options.matchBase && pattern.length === 1) {
+        file = [filename];
+      }
+      const hit = this.matchOne(file, pattern, partial);
+      if (hit) {
+        if (options.flipNegate) {
+          return true;
+        }
+        return !this.negate;
+      }
+    }
+    if (options.flipNegate) {
+      return false;
+    }
+    return this.negate;
+  }
+  static defaults(def) {
+    return minimatch.defaults(def).Minimatch;
+  }
+};
+minimatch.AST = AST;
+minimatch.Minimatch = Minimatch;
+minimatch.escape = escape;
+minimatch.unescape = unescape;
+
 // src/sync/PathMapper.ts
-var path = __toESM(require("path"));
+var path2 = __toESM(require("path"));
 var vscode2 = __toESM(require("vscode"));
 var PathMapper = class {
   constructor(config2) {
@@ -3917,16 +5898,21 @@ var PathMapper = class {
   }
   config;
   mapToRemote(uri) {
-    const workspaceFolder = vscode2.workspace.getWorkspaceFolder(uri);
-    if (!workspaceFolder) {
+    const primary = vscode2.workspace.workspaceFolders?.[0];
+    if (!primary) {
       throw new Error(`File ${uri.fsPath} is not in a workspace folder`);
     }
+    const rootRel = path2.relative(primary.uri.fsPath, uri.fsPath).replace(/\\/g, "/");
+    if (rootRel === ".." || rootRel.startsWith("../") || path2.isAbsolute(rootRel)) {
+      throw new Error(`File ${uri.fsPath} is not in the primary workspace folder (${primary.uri.fsPath})`);
+    }
     const syncDir = this.config.syncDirectory;
-    const baseFsPath = syncDir ? path.join(workspaceFolder.uri.fsPath, syncDir) : workspaceFolder.uri.fsPath;
-    let relativePath = path.relative(baseFsPath, uri.fsPath);
-    relativePath = relativePath.replace(/\\/g, "/");
-    if (relativePath === ".." || relativePath.startsWith("../")) {
-      throw new Error(`File ${uri.fsPath} is outside the sync directory '${syncDir}'`);
+    let relativePath = rootRel;
+    if (syncDir) {
+      if (rootRel !== syncDir && !rootRel.startsWith(syncDir + "/")) {
+        throw new Error(`File ${uri.fsPath} is outside the sync directory '${syncDir}'`);
+      }
+      relativePath = rootRel.slice(syncDir.length);
     }
     if (!relativePath.startsWith("/")) {
       relativePath = "/" + relativePath;
@@ -3935,19 +5921,44 @@ var PathMapper = class {
     return relativePath;
   }
   validate(remotePath) {
-    if (/[*?\[\]]/.test(remotePath)) {
-      throw new Error(`Invalid characters in path: ${remotePath}`);
-    }
-    if (remotePath.includes("..")) {
-      throw new Error(`Path traversal not allowed: ${remotePath}`);
-    }
-    if (remotePath.includes("//")) {
-      throw new Error(`Double slashes not allowed: ${remotePath}`);
-    }
+    validateRemotePath(remotePath);
   }
 };
+function validateRemotePath(remotePath) {
+  if (!remotePath) {
+    throw new Error("Empty remote path");
+  }
+  if (/[\x00-\x1f\x7f-\x9f]/.test(remotePath)) {
+    throw new Error(`Control character in remote path: ${JSON.stringify(remotePath)}`);
+  }
+  if (/[*?\[\]]/.test(remotePath)) {
+    throw new Error(`Invalid characters in path: ${remotePath}`);
+  }
+  if (remotePath.split("/").some((seg) => seg === "..")) {
+    throw new Error(`Path traversal not allowed: ${remotePath}`);
+  }
+  if (remotePath.includes("\\")) {
+    throw new Error(`Backslash not allowed in remote path: ${remotePath}`);
+  }
+  if (remotePath.includes("//")) {
+    throw new Error(`Double slashes not allowed: ${remotePath}`);
+  }
+  if (remotePath.includes(":")) {
+    throw new Error(`Colon not allowed in remote path: ${remotePath}`);
+  }
+}
 
 // src/sync/SyncEngine.ts
+var ALWAYS_EXCLUDE = [
+  "**/NetscriptDefinitions.d.ts",
+  ".git/**",
+  ".gitignore",
+  ".vscode/**",
+  "node_modules/**"
+];
+var MAX_FILE_SIZE_BYTES = 1024 * 1024;
+var MAX_DEFINITIONS_SIZE_BYTES = 8 * 1024 * 1024;
+var MAX_DOWNLOAD_FILE_COUNT = 5e3;
 var SyncEngine = class {
   constructor(api2, config2, outputChannel2) {
     this.api = api2;
@@ -3961,8 +5972,34 @@ var SyncEngine = class {
   debounceTimers = /* @__PURE__ */ new Map();
   outputChannel;
   async pushFile(uri) {
+    if (this.config.fileExtensions.length === 0) {
+      vscode3.window.showWarningMessage(
+        "bitburnerSync.fileExtensions is set to []. Nothing will be synced. Remove the setting to fall back to the defaults."
+      );
+      return;
+    }
+    if (this.isExcluded(uri)) {
+      this.log(`Excluded from sync: ${uri.fsPath}`);
+      return;
+    }
+    let size = -1;
+    try {
+      size = (await vscode3.workspace.fs.stat(uri)).size;
+    } catch {
+    }
+    if (size > MAX_FILE_SIZE_BYTES) {
+      throw new Error(
+        `File exceeds the ${formatBytes(MAX_FILE_SIZE_BYTES)} sync limit: ${uri.fsPath} (${formatBytes(size)})`
+      );
+    }
     const remotePath = this.pathMapper.mapToRemote(uri);
-    const content = (await vscode3.workspace.fs.readFile(uri)).toString();
+    const bytes = await vscode3.workspace.fs.readFile(uri);
+    if (bytes.byteLength > MAX_FILE_SIZE_BYTES) {
+      throw new Error(
+        `File exceeds the ${formatBytes(MAX_FILE_SIZE_BYTES)} sync limit: ${uri.fsPath} (${formatBytes(bytes.byteLength)})`
+      );
+    }
+    const content = Buffer.from(bytes).toString("utf8");
     await this.api.pushFile(remotePath, content, this.config.targetServer);
     this.log(`Pushed: ${remotePath}`);
     if (this.config.showNotifications) {
@@ -3970,15 +6007,34 @@ var SyncEngine = class {
     }
   }
   async syncAll() {
-    const pattern = this.config.fileGlob;
-    const files = await vscode3.workspace.findFiles(pattern);
+    if (this.config.fileExtensions.length === 0) {
+      vscode3.window.showWarningMessage(
+        "bitburnerSync.fileExtensions is set to []. Nothing will be synced. Remove the setting to fall back to the defaults."
+      );
+      return;
+    }
+    const primary = vscode3.workspace.workspaceFolders?.[0];
+    if (!primary) {
+      vscode3.window.showWarningMessage("No workspace folder open.");
+      return;
+    }
+    const includePattern = new vscode3.RelativePattern(primary, this.config.fileGlob);
+    const excludeGlob = this.findFilesExcludeGlob();
+    const excludePattern = excludeGlob ? new vscode3.RelativePattern(primary, excludeGlob) : null;
+    const files = await vscode3.workspace.findFiles(includePattern, excludePattern);
     if (files.length === 0) {
       vscode3.window.showWarningMessage("No matching files found to sync.");
       return;
     }
     let pushed = 0;
     let failed = 0;
+    let excluded = 0;
     for (const file of files) {
+      if (this.isExcluded(file)) {
+        excluded++;
+        this.log(`Excluded from sync: ${file.fsPath}`);
+        continue;
+      }
       try {
         await this.pushFile(file);
         pushed++;
@@ -3987,19 +6043,18 @@ var SyncEngine = class {
         this.log(`Failed to push ${file.fsPath}: ${err}`);
       }
     }
-    const msg = `Sync complete: ${pushed} pushed, ${failed} failed`;
+    const excludedSummary = excluded > 0 ? `, ${excluded} excluded` : "";
+    const msg = `Sync complete: ${pushed} pushed, ${failed} failed${excludedSummary}`;
     this.log(msg);
     if (this.config.showNotifications) {
       vscode3.window.showInformationMessage(msg);
     }
   }
-  async deleteFile(uri) {
-    const remotePath = this.pathMapper.mapToRemote(uri);
-    await this.api.deleteFile(remotePath, this.config.targetServer);
-    this.log(`Deleted: ${remotePath}`);
-  }
   handleFileChange(uri) {
     if (!this.config.autoSync) {
+      return;
+    }
+    if (this.isExcluded(uri)) {
       return;
     }
     const key = uri.toString();
@@ -4009,6 +6064,10 @@ var SyncEngine = class {
     }
     const timer = setTimeout(async () => {
       this.debounceTimers.delete(key);
+      if (!await this.fileExists(uri)) {
+        this.log(`Auto-sync skipped (file no longer exists): ${uri.fsPath}`);
+        return;
+      }
       try {
         await this.pushFile(uri);
       } catch (err) {
@@ -4018,6 +6077,12 @@ var SyncEngine = class {
     this.debounceTimers.set(key, timer);
   }
   async downloadAll() {
+    if (this.config.fileExtensions.length === 0) {
+      vscode3.window.showWarningMessage(
+        "bitburnerSync.fileExtensions is set to []. Nothing will be downloaded. Remove the setting to fall back to the defaults."
+      );
+      return;
+    }
     const workspaceFolders = vscode3.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
       throw new Error("No workspace folder open");
@@ -4030,29 +6095,127 @@ var SyncEngine = class {
       vscode3.window.showWarningMessage("No files found on Bitburner server.");
       return;
     }
-    let downloaded = 0;
-    let failed = 0;
+    if (fileNames.length > MAX_DOWNLOAD_FILE_COUNT) {
+      const msg2 = `Refusing to download: server returned ${fileNames.length} filenames (limit is ${MAX_DOWNLOAD_FILE_COUNT}). This usually indicates a corrupt save or a buggy server. Narrow bitburnerSync.fileExtensions or contact the server admin.`;
+      this.log(msg2);
+      vscode3.window.showErrorMessage(msg2);
+      return;
+    }
+    const allowedExts = this.config.fileExtensions;
+    const plan = [];
+    const conflicts = [];
+    let skipped = 0;
     for (const filename of fileNames) {
       try {
-        const content = await this.api.getFile(filename, this.config.targetServer);
-        const relativePath = filename.startsWith("/") ? filename.slice(1) : filename;
-        const destUri = vscode3.Uri.joinPath(destBaseUri, relativePath);
-        await vscode3.workspace.fs.writeFile(destUri, Buffer.from(content));
-        downloaded++;
-        this.log(`Downloaded: ${filename}`);
+        validateRemotePath(filename);
       } catch (err) {
-        failed++;
-        this.log(`Failed to download ${filename}: ${err}`);
+        skipped++;
+        this.log(`Skipped (invalid name from server): ${JSON.stringify(filename)} \u2014 ${err instanceof Error ? err.message : err}`);
+        continue;
+      }
+      if (!matchesAllowedExtension(filename, allowedExts)) {
+        skipped++;
+        this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${filename}`);
+        continue;
+      }
+      const relativePath = filename.startsWith("/") ? filename.slice(1) : filename;
+      const destUri = vscode3.Uri.joinPath(destBaseUri, relativePath);
+      plan.push({ remote: filename, destUri });
+      if (await this.fileExists(destUri)) {
+        conflicts.push(filename);
       }
     }
-    const msg = `Download complete: ${downloaded} downloaded, ${failed} failed`;
+    if (conflicts.length > 0 && !await this.confirmOverwrite(conflicts)) {
+      this.log(`Download cancelled by user (${conflicts.length} local file${conflicts.length === 1 ? "" : "s"} would have been overwritten)`);
+      return;
+    }
+    let downloaded = 0;
+    let failed = 0;
+    for (const { remote, destUri } of plan) {
+      try {
+        const content = await this.api.getFile(remote, this.config.targetServer);
+        const byteLen = Buffer.byteLength(content, "utf8");
+        if (byteLen > MAX_FILE_SIZE_BYTES) {
+          throw new Error(
+            `File exceeds the ${formatBytes(MAX_FILE_SIZE_BYTES)} sync limit (${formatBytes(byteLen)})`
+          );
+        }
+        await vscode3.workspace.fs.writeFile(destUri, Buffer.from(content));
+        downloaded++;
+        this.log(`Downloaded: ${remote}`);
+      } catch (err) {
+        failed++;
+        this.log(`Failed to download ${remote}: ${err}`);
+      }
+    }
+    const summarySkipped = skipped > 0 ? `, ${skipped} skipped` : "";
+    const msg = `Download complete: ${downloaded} downloaded, ${failed} failed${summarySkipped}`;
     this.log(msg);
     if (this.config.showNotifications) {
       vscode3.window.showInformationMessage(msg);
     }
   }
+  async fileExists(uri) {
+    try {
+      await vscode3.workspace.fs.stat(uri);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  allExcludePatterns() {
+    return [...ALWAYS_EXCLUDE, ...this.config.exclude];
+  }
+  isExcluded(uri) {
+    const primary = vscode3.workspace.workspaceFolders?.[0];
+    if (!primary) {
+      return false;
+    }
+    const rel = path3.relative(primary.uri.fsPath, uri.fsPath).replace(/\\/g, "/");
+    if (!rel || rel.startsWith("..") || path3.isAbsolute(rel)) {
+      return false;
+    }
+    return this.allExcludePatterns().some((p) => minimatch(rel, p, { dot: true }));
+  }
+  findFilesExcludeGlob() {
+    const patterns = this.allExcludePatterns();
+    if (patterns.length === 0) {
+      return null;
+    }
+    if (patterns.length === 1) {
+      return patterns[0];
+    }
+    return `{${patterns.join(",")}}`;
+  }
+  async confirmOverwrite(filenames) {
+    const MAX_LIST = 20;
+    const shown = filenames.slice(0, MAX_LIST);
+    const remainder = filenames.length - shown.length;
+    const list = shown.join("\n");
+    const more = remainder > 0 ? `
+\u2026and ${remainder} more` : "";
+    const count = filenames.length;
+    const noun = count === 1 ? "file" : "files";
+    const choice = await vscode3.window.showWarningMessage(
+      `Overwrite ${count} local ${noun}?`,
+      {
+        modal: true,
+        detail: `Downloading from Bitburner will replace the following ${noun}:
+
+${list}${more}`
+      },
+      "Overwrite"
+    );
+    return choice === "Overwrite";
+  }
   async downloadDefinitions() {
     const content = await this.api.getDefinitionFile();
+    const byteLen = Buffer.byteLength(content, "utf8");
+    if (byteLen > MAX_DEFINITIONS_SIZE_BYTES) {
+      throw new Error(
+        `NetscriptDefinitions.d.ts exceeds the ${formatBytes(MAX_DEFINITIONS_SIZE_BYTES)} sanity limit (${formatBytes(byteLen)})`
+      );
+    }
     const workspaceFolders = vscode3.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
       throw new Error("No workspace folder open");
@@ -4067,13 +6230,11 @@ var SyncEngine = class {
   async ensureTsConfig(rootUri) {
     const tsconfigUri = vscode3.Uri.joinPath(rootUri, "tsconfig.json");
     const defsEntry = "NetscriptDefinitions.d.ts";
-    let existing;
+    let raw;
     try {
-      const raw = (await vscode3.workspace.fs.readFile(tsconfigUri)).toString();
-      existing = JSON.parse(raw);
+      const bytes = await vscode3.workspace.fs.readFile(tsconfigUri);
+      raw = Buffer.from(bytes).toString("utf8");
     } catch {
-    }
-    if (!existing) {
       const tsconfig = {
         compilerOptions: {
           target: "ES2022",
@@ -4090,17 +6251,53 @@ var SyncEngine = class {
       this.log("Created tsconfig.json");
       return;
     }
-    let files = existing["files"];
-    if (!Array.isArray(files)) {
-      files = [defsEntry];
-      existing["files"] = files;
-    } else if (!files.includes(defsEntry)) {
-      files.push(defsEntry);
-    } else {
+    let strictParsed;
+    try {
+      strictParsed = JSON.parse(raw);
+    } catch {
+    }
+    if (strictParsed) {
+      let files = strictParsed["files"];
+      if (!Array.isArray(files)) {
+        files = [defsEntry];
+        strictParsed["files"] = files;
+      } else if (!files.includes(defsEntry)) {
+        files.push(defsEntry);
+      } else {
+        return;
+      }
+      await vscode3.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(strictParsed, null, 2) + "\n"));
+      this.log("Updated tsconfig.json with NetscriptDefinitions.d.ts");
       return;
     }
-    await vscode3.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(existing, null, 2) + "\n"));
-    this.log("Updated tsconfig.json with NetscriptDefinitions.d.ts");
+    let jsoncParsed;
+    try {
+      jsoncParsed = JSON.parse(stripJsonComments(raw));
+    } catch {
+    }
+    if (jsoncParsed) {
+      const files = jsoncParsed["files"];
+      if (Array.isArray(files) && files.includes(defsEntry)) {
+        return;
+      }
+    }
+    await this.warnManualTsConfigSetup(tsconfigUri, defsEntry, jsoncParsed === void 0);
+  }
+  async warnManualTsConfigSetup(tsconfigUri, defsEntry, unparseable) {
+    const reason = unparseable ? "tsconfig.json could not be parsed" : "tsconfig.json appears to contain comments or trailing commas (JSONC), which the extension will not rewrite";
+    const message = `${reason}. Add "${defsEntry}" to the "files" array manually to enable type hints.`;
+    this.log(`WARN: ${message}`);
+    this.log("Suggested tsconfig.json entry:");
+    this.log(`    "files": ["${defsEntry}"]`);
+    this.log("See the Troubleshooting section of the README for a full example.");
+    const open = "Open tsconfig.json";
+    const show = "Show Instructions";
+    const choice = await vscode3.window.showWarningMessage(message, open, show);
+    if (choice === open) {
+      await vscode3.commands.executeCommand("vscode.open", tsconfigUri);
+    } else if (choice === show) {
+      this.outputChannel.show();
+    }
   }
   dispose() {
     for (const timer of this.debounceTimers.values()) {
@@ -4113,6 +6310,77 @@ var SyncEngine = class {
     this.outputChannel.appendLine(`[${timestamp}] ${message}`);
   }
 };
+function formatBytes(bytes) {
+  if (bytes < 0) {
+    return "unknown size";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function matchesAllowedExtension(filename, allowed) {
+  const lastDot = filename.lastIndexOf(".");
+  if (lastDot < 0) {
+    return false;
+  }
+  return allowed.includes(filename.slice(lastDot).toLowerCase());
+}
+function stripJsonComments(text) {
+  let out = "";
+  let i = 0;
+  let inString = false;
+  let stringChar = "";
+  while (i < text.length) {
+    const c = text[i];
+    const next = i + 1 < text.length ? text[i + 1] : "";
+    if (inString) {
+      if (c === "\\" && i + 1 < text.length) {
+        out += c + next;
+        i += 2;
+        continue;
+      }
+      if (c === stringChar) {
+        inString = false;
+      }
+      out += c;
+      i++;
+    } else if (c === '"' || c === "'") {
+      inString = true;
+      stringChar = c;
+      out += c;
+      i++;
+    } else if (c === "/" && next === "/") {
+      while (i < text.length && text[i] !== "\n") {
+        i++;
+      }
+    } else if (c === "/" && next === "*") {
+      i += 2;
+      while (i + 1 < text.length && !(text[i] === "*" && text[i + 1] === "/")) {
+        i++;
+      }
+      i += 2;
+    } else if (c === ",") {
+      let j = i + 1;
+      while (j < text.length && (text[j] === " " || text[j] === "	" || text[j] === "\n" || text[j] === "\r")) {
+        j++;
+      }
+      if (j < text.length && (text[j] === "}" || text[j] === "]")) {
+        i++;
+      } else {
+        out += c;
+        i++;
+      }
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
 
 // src/sync/FileWatcher.ts
 var vscode4 = __toESM(require("vscode"));
@@ -4127,17 +6395,20 @@ var FileWatcher = class {
   disposables = [];
   start() {
     this.stop();
-    const pattern = this.config.fileGlob;
+    if (this.config.fileExtensions.length === 0) {
+      return;
+    }
+    const primary = vscode4.workspace.workspaceFolders?.[0];
+    if (!primary) {
+      return;
+    }
+    const pattern = new vscode4.RelativePattern(primary, this.config.fileGlob);
     this.fileWatcher = vscode4.workspace.createFileSystemWatcher(pattern);
     this.fileWatcher.onDidChange((uri) => {
       this.syncEngine.handleFileChange(uri);
     }, null, this.disposables);
     this.fileWatcher.onDidCreate((uri) => {
       this.syncEngine.handleFileChange(uri);
-    }, null, this.disposables);
-    this.fileWatcher.onDidDelete((uri) => {
-      this.syncEngine.deleteFile(uri).catch(() => {
-      });
     }, null, this.disposables);
     const saveWatcher = vscode4.workspace.onDidSaveTextDocument((doc) => {
       if (this.matchesExtensions(doc.uri) && this.isInSyncDirectory(doc.uri)) {
@@ -4147,17 +6418,14 @@ var FileWatcher = class {
     this.disposables.push(saveWatcher);
   }
   isInSyncDirectory(uri) {
-    const syncDir = this.config.syncDirectory;
-    if (!syncDir) {
-      return true;
-    }
-    const folder = vscode4.workspace.getWorkspaceFolder(uri);
-    if (!folder) {
+    const primary = vscode4.workspace.workspaceFolders?.[0];
+    if (!primary) {
       return false;
     }
     const filePath = uri.fsPath.replace(/\\/g, "/");
-    const folderPath = folder.uri.fsPath.replace(/\\/g, "/");
-    const expectedPrefix = `${folderPath}/${syncDir}/`;
+    const folderPath = primary.uri.fsPath.replace(/\\/g, "/");
+    const syncDir = this.config.syncDirectory;
+    const expectedPrefix = syncDir ? `${folderPath}/${syncDir}/` : `${folderPath}/`;
     return filePath.startsWith(expectedPrefix);
   }
   stop() {
@@ -4169,8 +6437,12 @@ var FileWatcher = class {
     this.disposables.length = 0;
   }
   matchesExtensions(uri) {
-    const ext = uri.fsPath.substring(uri.fsPath.lastIndexOf("."));
-    return this.config.fileExtensions.includes(ext);
+    const lastDot = uri.fsPath.lastIndexOf(".");
+    if (lastDot < 0) {
+      return false;
+    }
+    const ext2 = uri.fsPath.slice(lastDot).toLowerCase();
+    return this.config.fileExtensions.includes(ext2);
   }
   dispose() {
     this.stop();
@@ -4227,7 +6499,7 @@ var fileWatcher;
 var statusBar;
 var outputChannel;
 async function startServer() {
-  if (wsServer.state !== "stopped") {
+  if (wsServer.state !== "stopped" && wsServer.state !== "error") {
     vscode6.window.showInformationMessage("Sync server is already running.");
     return;
   }
@@ -4252,6 +6524,8 @@ async function ensureServerStarted() {
 function activate(context) {
   outputChannel = vscode6.window.createOutputChannel("Bitburner Sync");
   config = new Configuration();
+  warnIfMultiRoot(outputChannel);
+  warnIfSyncDirectoryUnsafe(outputChannel, config);
   wsServer = new WebSocketServer2();
   rpcClient = new JsonRpcClient(wsServer);
   api = new BitburnerApi(rpcClient, config.targetServer);
@@ -4260,6 +6534,9 @@ function activate(context) {
   statusBar = new StatusBar();
   wsServer.on("stateChanged", (state) => {
     statusBar.update(state);
+  });
+  wsServer.on("error", (err) => {
+    outputChannel.appendLine(`WebSocket server error: ${err instanceof Error ? err.message : err}`);
   });
   wsServer.on("connected", async () => {
     outputChannel.appendLine("Bitburner connected.");
@@ -4278,7 +6555,8 @@ function activate(context) {
     vscode6.commands.registerCommand("bitburnerSync.startServer", startServer),
     vscode6.commands.registerCommand("bitburnerSync.stopServer", stopServer),
     vscode6.commands.registerCommand("bitburnerSync.toggleServer", () => {
-      return wsServer.state === "stopped" ? startServer() : stopServer();
+      const offlike = wsServer.state === "stopped" || wsServer.state === "error";
+      return offlike ? startServer() : stopServer();
     }),
     vscode6.commands.registerCommand("bitburnerSync.syncFile", async () => {
       const editor = vscode6.window.activeTextEditor;
@@ -4338,17 +6616,25 @@ function activate(context) {
     { dispose: () => syncEngine.dispose() },
     { dispose: () => fileWatcher.dispose() },
     { dispose: () => rpcClient.dispose() },
-    { dispose: () => {
-      wsServer.stop();
-    } }
+    // Return the Promise so VS Code awaits port release on
+    // reload/upgrade. Without this the next activation can race the
+    // close callback and hit EADDRINUSE binding to the same port.
+    { dispose: () => wsServer.stop() }
   );
   context.subscriptions.push(
     vscode6.workspace.onDidChangeConfiguration(async (e) => {
-      if (e.affectsConfiguration("bitburnerSync.port") && wsServer.state !== "stopped") {
-        outputChannel.appendLine("Port changed, restarting server...");
-        await stopServer();
-        await startServer();
+      if (!e.affectsConfiguration("bitburnerSync")) {
+        return;
       }
+      if (e.affectsConfiguration("bitburnerSync.syncDirectory")) {
+        warnIfSyncDirectoryUnsafe(outputChannel, config);
+      }
+      if (wsServer.state === "stopped") {
+        return;
+      }
+      outputChannel.appendLine("Configuration changed, restarting sync server...");
+      await stopServer();
+      await startServer();
     })
   );
   if (config.autoStart) {
@@ -4356,6 +6642,24 @@ function activate(context) {
   }
 }
 function deactivate() {
+}
+function warnIfMultiRoot(channel) {
+  const folders = vscode6.workspace.workspaceFolders;
+  if (!folders || folders.length <= 1) {
+    return;
+  }
+  const first = folders[0];
+  const msg = `Bitburner Sync: multi-root workspace detected (${folders.length} folders). Only "${first.name}" (${first.uri.fsPath}) will be synced; files in other folders are ignored.`;
+  channel.appendLine(msg);
+  vscode6.window.showWarningMessage(msg);
+}
+function warnIfSyncDirectoryUnsafe(channel, cfg) {
+  const err = cfg.syncDirectoryError();
+  if (!err) {
+    return;
+  }
+  channel.appendLine(err);
+  vscode6.window.showWarningMessage(err);
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

@@ -38,7 +38,13 @@ const vscodeMock = __importStar(require("./mocks/vscode"));
 const Configuration_1 = require("../../config/Configuration");
 const FileWatcher_1 = require("../../sync/FileWatcher");
 const helpers_1 = require("./helpers");
-const { Uri, _reset, _state, _triggerSave, _setConfig, _setWorkspaceFolders } = vscodeMock;
+const { Uri, RelativePattern, _reset, _state, _triggerSave, _setConfig, _setWorkspaceFolders } = vscodeMock;
+function patternString(p) {
+    return typeof p === 'string' ? p : p.pattern;
+}
+function patternBase(p) {
+    return typeof p === 'string' ? undefined : p.baseUri.fsPath;
+}
 function buildEngine() {
     return {
         handleFileChange: new helpers_1.Spy(),
@@ -52,12 +58,26 @@ function asEngine(fake) {
 suite('FileWatcher', () => {
     setup(() => {
         _reset();
+        // FileWatcher scopes to the primary workspace folder via RelativePattern;
+        // every test below needs at least one folder for the watcher to attach to.
+        _setWorkspaceFolders(['/workspace']);
     });
-    test('creates a FileSystemWatcher using the config glob pattern', () => {
+    test('creates a FileSystemWatcher using the config glob pattern scoped to folder[0]', () => {
         const watcher = new FileWatcher_1.FileWatcher(asEngine(buildEngine()), new Configuration_1.Configuration());
         watcher.start();
         assert_1.strict.equal(_state.fileWatchers.length, 1);
-        assert_1.strict.equal(_state.fileWatchers[0].pattern, '**/*.{js,ts,jsx,tsx,txt,json,css,py}');
+        const pattern = _state.fileWatchers[0].pattern;
+        assert_1.strict.ok(pattern instanceof RelativePattern, 'expected a RelativePattern, not a bare string glob');
+        assert_1.strict.equal(patternString(pattern), '**/*.{js,ts,jsx,tsx,txt,json,css,py}');
+        assert_1.strict.equal(patternBase(pattern), '/workspace');
+        watcher.dispose();
+    });
+    test('does not create a watcher when no workspace folder is open', () => {
+        _state.workspaceFolders = undefined;
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(buildEngine()), new Configuration_1.Configuration());
+        watcher.start();
+        assert_1.strict.equal(_state.fileWatchers.length, 0);
+        assert_1.strict.equal(_state.onSaveListeners.length, 0);
         watcher.dispose();
     });
     test('forwards onDidChange to syncEngine.handleFileChange', () => {
@@ -106,11 +126,20 @@ suite('FileWatcher', () => {
         _setConfig('bitburnerSync', 'syncDirectory', 'src');
         const watcher = new FileWatcher_1.FileWatcher(asEngine(buildEngine()), new Configuration_1.Configuration());
         watcher.start();
-        assert_1.strict.equal(_state.fileWatchers[0].pattern, 'src/**/*.{js,ts,jsx,tsx,txt,json,css,py}');
+        assert_1.strict.equal(patternString(_state.fileWatchers[0].pattern), 'src/**/*.{js,ts,jsx,tsx,txt,json,css,py}');
+        watcher.dispose();
+    });
+    test('ignores save events for files in non-primary workspace folders', () => {
+        _setWorkspaceFolders(['/primary', '/secondary']);
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        _triggerSave(Uri.file('/secondary/a.js'));
+        _triggerSave(Uri.file('/primary/a.js'));
+        assert_1.strict.equal(engine.handleFileChange.callCount, 1, 'only the primary-folder save should fire');
         watcher.dispose();
     });
     test('ignores save events for files outside the syncDirectory', () => {
-        _setWorkspaceFolders(['/workspace']);
         _setConfig('bitburnerSync', 'syncDirectory', 'src');
         const engine = buildEngine();
         const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());

@@ -96,7 +96,19 @@ export class WebSocketServer extends EventEmitter {
 
             this.server.on('connection', (ws) => {
                 if (this.client) {
-                    this.client.close();
+                    // Surface the old connection ending synchronously *before*
+                    // we announce the new one, so listeners that pair
+                    // connect/disconnect (notably JsonRpcClient — pending
+                    // requests bound to the dead socket need to fail now, not
+                    // wait for their per-request timeout) don't see two
+                    // `connected`s back-to-back. We null this.client first so
+                    // the old ws's own 'close' handler — which guards on
+                    // `this.client === ws` — does NOT also emit a second
+                    // `disconnected` after we've swapped in `ws`.
+                    const old = this.client;
+                    this.client = null;
+                    this.emit('disconnected');
+                    old.close();
                 }
 
                 this.client = ws;

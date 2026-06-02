@@ -6,7 +6,7 @@
  * Each test should call `_reset()` in `beforeEach` to clear state.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MockOutputChannel = exports.MockStatusBarItem = exports.MockFileSystemWatcher = exports.StatusBarAlignment = exports.ThemeColor = exports.Disposable = exports.Uri = exports.commands = exports.window = exports.workspace = exports._state = void 0;
+exports.MockOutputChannel = exports.MockStatusBarItem = exports.MockFileSystemWatcher = exports.StatusBarAlignment = exports.RelativePattern = exports.ThemeColor = exports.Disposable = exports.Uri = exports.commands = exports.window = exports.workspace = exports._state = void 0;
 exports._reset = _reset;
 exports._queueWarningResponse = _queueWarningResponse;
 exports._setConfig = _setConfig;
@@ -77,6 +77,30 @@ class ThemeColor {
     }
 }
 exports.ThemeColor = ThemeColor;
+// Minimal stand-in for vscode.RelativePattern. Mirrors the real shape closely
+// enough for the production code to construct it; the mock filesystem APIs
+// only care about the `.pattern` string.
+class RelativePattern {
+    pattern;
+    baseUri;
+    base;
+    constructor(base, pattern) {
+        this.pattern = pattern;
+        if (typeof base === 'string') {
+            this.baseUri = Uri.file(base);
+            this.base = base;
+        }
+        else if (base instanceof Uri) {
+            this.baseUri = base;
+            this.base = base.fsPath;
+        }
+        else {
+            this.baseUri = base.uri;
+            this.base = base.uri.fsPath;
+        }
+    }
+}
+exports.RelativePattern = RelativePattern;
 const StatusBarAlignment = { Left: 1, Right: 2 };
 exports.StatusBarAlignment = StatusBarAlignment;
 class MockOutputChannel {
@@ -171,7 +195,9 @@ exports._state = {
     languageConfigValues: new Map(),
     workspaceFolders: undefined,
     files: new Map(),
+    statSizeOverride: new Map(),
     findFilesQueue: [],
+    findFilesCalls: [],
     notifications: [],
     commands: new Map(),
     activeTextEditor: undefined,
@@ -189,7 +215,9 @@ function _reset() {
     exports._state.languageConfigValues = new Map();
     exports._state.workspaceFolders = undefined;
     exports._state.files = new Map();
+    exports._state.statSizeOverride = new Map();
     exports._state.findFilesQueue = [];
+    exports._state.findFilesCalls = [];
     exports._state.notifications = [];
     exports._state.commands = new Map();
     exports._state.activeTextEditor = undefined;
@@ -304,10 +332,13 @@ exports.workspace = {
             if (!content) {
                 throw new Error(`ENOENT: ${uri.fsPath}`);
             }
-            return { type: 1, ctime: 0, mtime: 0, size: content.length };
+            const override = exports._state.statSizeOverride.get(uri.fsPath);
+            const size = override !== undefined ? override : content.length;
+            return { type: 1, ctime: 0, mtime: 0, size };
         },
     },
-    async findFiles(_pattern) {
+    async findFiles(include, exclude) {
+        exports._state.findFilesCalls.push({ include, exclude });
         return exports._state.findFilesQueue.slice();
     },
     createFileSystemWatcher(pattern) {
