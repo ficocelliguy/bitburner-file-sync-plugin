@@ -33,7 +33,7 @@ async function startServer(): Promise<void> {
     try {
         await wsServer.start(config.port);
         fileWatcher.start();
-        vscode.window.showInformationMessage("In-game under Options->Remote API, enter that port and hit Connect.");
+        vscode.window.showInformationMessage(`In-game under Options->Remote API, enter port ${config.port} and hit Connect.`);
         vscode.window.showInformationMessage(`Bitburner sync server started on port ${config.port}.`);
     } catch (err) {
         vscode.window.showErrorMessage(`Failed to start server: ${err}`);
@@ -86,9 +86,10 @@ export function activate(context: vscode.ExtensionContext): void {
             }
         }
         // First-connect-per-workspace prompt: if the game has scripts the
-        // user doesn't have locally, offer to pull them down. workspaceState
-        // (not globalState) so each project gets its own offer.
-        await maybePromptFirstConnectDownload(context);
+        // user doesn't have locally, offer to pull them down — or, if the
+        // workspace has scripts the game doesn't, offer to push them up.
+        // workspaceState (not globalState) so each project gets its own offer.
+        await maybePromptFirstConnectSync(context);
     });
 
     wsServer.on('disconnected', () => {
@@ -216,7 +217,7 @@ async function maybeOpenSettingsOnFirstInstall(context: vscode.ExtensionContext)
     }
 }
 
-async function maybePromptFirstConnectDownload(context: vscode.ExtensionContext): Promise<void> {
+async function maybePromptFirstConnectSync(context: vscode.ExtensionContext): Promise<void> {
     if (context.workspaceState.get<boolean>(FIRST_CONNECT_KEY, false)) {
         return;
     }
@@ -225,20 +226,35 @@ async function maybePromptFirstConnectDownload(context: vscode.ExtensionContext)
     // first-connect intent.
     await context.workspaceState.update(FIRST_CONNECT_KEY, true);
     try {
-        const newCount = await syncEngine.countNewRemoteFiles();
-        if (newCount <= 0) {
+        const newRemoteCount = await syncEngine.countNewRemoteFiles();
+        if (newRemoteCount > 0) {
+            const noun = newRemoteCount === 1 ? 'script' : 'scripts';
+            const choice = await vscode.window.showInformationMessage(
+                `Bitburner has ${newRemoteCount} ${noun} not in this workspace. Download them now?`,
+                'Download', 'Not now'
+            );
+            if (choice === 'Download') {
+                await syncEngine.downloadAll();
+            }
             return;
         }
-        const noun = newCount === 1 ? 'script' : 'scripts';
+        // Nothing to download. Check the other direction: local files the
+        // server doesn't have. Only offer upload when the download branch
+        // is empty so we never ask the user to pick a direction.
+        const newLocalCount = await syncEngine.countNewLocalFiles();
+        if (newLocalCount <= 0) {
+            return;
+        }
+        const noun = newLocalCount === 1 ? 'script' : 'scripts';
         const choice = await vscode.window.showInformationMessage(
-            `Bitburner has ${newCount} ${noun} not in this workspace. Download them now?`,
-            'Download', 'Not now'
+            `This workspace has ${newLocalCount} ${noun} not in Bitburner. Sync them now?`,
+            'Sync', 'Not now'
         );
-        if (choice === 'Download') {
-            await syncEngine.downloadAll();
+        if (choice === 'Sync') {
+            await syncEngine.syncAll();
         }
     } catch (err) {
-        outputChannel.appendLine(`First-connect download prompt failed: ${err}`);
+        outputChannel.appendLine(`First-connect sync prompt failed: ${err}`);
     }
 }
 

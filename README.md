@@ -12,13 +12,15 @@ A VS Code extension that syncs your local script files to [Bitburner](https://gi
 
 ## Setup
 
-1. Install the extension in VS Code. On first install the extension auto-opens its settings page so you can review per-project options.
-2. Open the Command Palette (`Ctrl+Shift+P`) and run **Bitburner: Start Sync Server**.
-3. In Bitburner, go to **Options > Remote API** and enter the port (default `12525`), then click `Connect`. The status bar will show "Connected" once linked.
-4. The first time you connect to Bitburner from a workspace, if the game has scripts that aren't present locally, the extension offers to pull them down for you. You can also trigger this manually at any time via **Bitburner: Download Files from Server**.
-5. All your files will be synced into Bitburner on save.
+1 - Install the extension in VS Code. On first install the extension auto-opens its settings page so you can review per-project options.
+2 - Open the Command Palette (`Ctrl+Shift+P`) and run **Bitburner: Start Sync Server**.
+3 - In Bitburner, go to **Options > Remote API** and enter the port (default `12525`), then click `Connect`. The status bar will show "Connected" once linked.
+4 - The first time you connect to Bitburner from a workspace, the extension offers to download in-game scripts you don't have locally — or, if the game has nothing new, offers to push up any local scripts the game is missing. You can trigger either operation manually at any time via **Bitburner: Download Files from Server** or **Bitburner: Sync All Files**.
+5 - All your files will be synced into Bitburner on save.
 
 The extension works on Windows, macOS, and Linux — all paths are normalized internally and the sync server binds to loopback (`127.0.0.1`) on every platform.
+
+If you have any questions, ask on the [official Discord](https://discord.gg/TFc3hKD) or on the [issues page for this plugin](https://github.com/ficocelliguy/bitburner-file-sync-plugin/issues).
 
 ### Per-project configuration
 
@@ -73,7 +75,7 @@ Individual workspace settings are stored in `.vscode/settings.json` inside your 
 By default, the extension syncs every workspace file whose extension is in `bitburnerSync.fileExtensions` and that lives under `bitburnerSync.syncDirectory`. The same `fileExtensions` filter applies in reverse: `Bitburner: Download Files from Server` only pulls down files whose extension is in the list (so Bitburner-specific files like `*.cct` contracts or `*.lit` literature are left on the server unless you opt in).
 
 On top of the extension filter, two layers of path exclusions apply:
-
+```md
 - **`bitburnerSync.exclude`.** Your own list of additional workspace-relative glob patterns.
 - **Baseline:** These paths are *always* excluded:
   - `NetscriptDefinitions.d.ts` (the local type-hint file)
@@ -81,7 +83,7 @@ On top of the extension filter, two layers of path exclusions apply:
   - `.gitignore`
   - `.vscode/**`
   - `node_modules/**`
-
+```
 Excluded files are silently ignored on auto-save and on `Bitburner: Sync All Files`. If you run `Bitburner: Sync Current File` against one, the extension logs `Excluded from sync: ...` to the **Bitburner Sync** output channel and does nothing.
 
 ### Pattern syntax

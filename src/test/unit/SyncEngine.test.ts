@@ -867,6 +867,103 @@ suite('SyncEngine', () => {
         });
     });
 
+    suite('countNewLocalFiles', () => {
+        test('counts only local files whose remote-equivalent is not on the server', async () => {
+            _writeFile('/workspace/shared.js', 'local');
+            _writeFile('/workspace/new1.js', 'a');
+            _writeFile('/workspace/new2.js', 'b');
+            _state.findFilesQueue = [
+                Uri.file('/workspace/shared.js'),
+                Uri.file('/workspace/new1.js'),
+                Uri.file('/workspace/new2.js'),
+            ];
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFileNames', ['/shared.js']);
+            assert.equal(await engine.countNewLocalFiles(), 2);
+        });
+
+        test('returns 0 when every local file already exists remotely', async () => {
+            _writeFile('/workspace/a.js', 'a');
+            _state.findFilesQueue = [Uri.file('/workspace/a.js')];
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFileNames', ['/a.js']);
+            assert.equal(await engine.countNewLocalFiles(), 0);
+        });
+
+        test('returns 0 when fileExtensions is explicitly []', async () => {
+            _setConfig('bitburnerSync', 'fileExtensions', []);
+            const { engine, rpc } = buildEngine();
+            // No RPC needed: short-circuited before the listing call.
+            assert.equal(await engine.countNewLocalFiles(), 0);
+            assert.equal(rpc.calls.length, 0);
+        });
+
+        test('returns 0 when no workspace folder is open (silent: does not throw)', async () => {
+            _state.workspaceFolders = undefined;
+            const { engine } = buildEngine();
+            assert.equal(await engine.countNewLocalFiles(), 0);
+        });
+
+        test('does not count files excluded by user-configured exclude patterns', async () => {
+            _setConfig('bitburnerSync', 'exclude', ['**/*.test.js']);
+            _writeFile('/workspace/main.js', 'm');
+            _writeFile('/workspace/foo.test.js', 't');
+            // findFiles itself would normally apply the same exclude glob;
+            // queue both anyway to verify the in-engine isExcluded check
+            // catches the test file as a backstop.
+            _state.findFilesQueue = [
+                Uri.file('/workspace/main.js'),
+                Uri.file('/workspace/foo.test.js'),
+            ];
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFileNames', []);
+            assert.equal(await engine.countNewLocalFiles(), 1);
+        });
+
+        test('matches local-to-remote paths even when the server omits leading slashes', async () => {
+            _writeFile('/workspace/a.js', 'a');
+            _state.findFilesQueue = [Uri.file('/workspace/a.js')];
+            const { engine, rpc } = buildEngine();
+            // Server returns the name without the leading slash that
+            // PathMapper produces; the canonicalizer should make them match.
+            rpc.queueResponse('getFileNames', ['a.js']);
+            assert.equal(await engine.countNewLocalFiles(), 0);
+        });
+
+        test('honors syncDirectory when comparing — strips it from the remote-equivalent path', async () => {
+            _setConfig('bitburnerSync', 'syncDirectory', 'src');
+            _writeFile('/workspace/src/main.js', 'm');
+            _state.findFilesQueue = [Uri.file('/workspace/src/main.js')];
+            const { engine, rpc } = buildEngine();
+            // With syncDirectory 'src', src/main.js maps to /main.js on the server.
+            rpc.queueResponse('getFileNames', ['/main.js']);
+            assert.equal(await engine.countNewLocalFiles(), 0);
+        });
+
+        test('returns 0 when the server returns an unreasonable number of filenames', async () => {
+            _writeFile('/workspace/a.js', 'a');
+            _state.findFilesQueue = [Uri.file('/workspace/a.js')];
+            const { engine, rpc } = buildEngine();
+            const flood = Array.from({ length: 5001 }, (_, i) => `/file${i}.js`);
+            rpc.queueResponse('getFileNames', flood);
+            // Don't trust the listing — refuse to compute a difference.
+            assert.equal(await engine.countNewLocalFiles(), 0);
+        });
+
+        test('counts files in subdirectories using their full remote-equivalent paths', async () => {
+            _writeFile('/workspace/lib/helper.js', 'h');
+            _writeFile('/workspace/main.js', 'm');
+            _state.findFilesQueue = [
+                Uri.file('/workspace/lib/helper.js'),
+                Uri.file('/workspace/main.js'),
+            ];
+            const { engine, rpc } = buildEngine();
+            // Only main.js is on the server — lib/helper.js is new.
+            rpc.queueResponse('getFileNames', ['/main.js']);
+            assert.equal(await engine.countNewLocalFiles(), 1);
+        });
+    });
+
     suite('downloadDefinitions', () => {
         test('throws when no workspace folder is open', async () => {
             _state.workspaceFolders = undefined;

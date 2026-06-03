@@ -1,9 +1,18 @@
 # Change Log
 
-All notable changes to the "bitburner-file-sync-plugin" extension will be documented in this file.
+## 0.0.3
+- Prompt to sync files into the game on connect, if there are files missing from game
+- Prompt to download files to workspace, if there are files in-game nto in the workspace
+- Update icon
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## 0.0.2
 
-## [Unreleased]
+- Marketplace Publication
+
+## 0.0.1
 
 - Initial release
+- File sync features using the bitburner Remote API
+- Command to pull code from game
+- Pull netscript definitions from game on first connection
+- Update .tsconfig to use netscript definitions file

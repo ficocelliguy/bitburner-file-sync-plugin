@@ -290,6 +290,54 @@ export class SyncEngine {
         return planResult.entries.filter(e => !e.existing).length;
     }
 
+    // Returns the count of local syncable files whose remote-equivalent path
+    // is not present on the server. Mirrors syncAll() filtering (extensions,
+    // syncDirectory, excludes) so the count reflects what a syncAll would
+    // actually push. Used by the first-connect prompt in extension.ts to
+    // decide whether to offer an upload when nothing needs downloading.
+    async countNewLocalFiles(): Promise<number> {
+        if (this.config.fileExtensions.length === 0) {
+            return 0;
+        }
+        const primary = vscode.workspace.workspaceFolders?.[0];
+        if (!primary) {
+            return 0;
+        }
+
+        const remoteNames = await this.api.getFileNames(this.config.targetServer);
+        // Same hostile/buggy-listing guard as downloadAll. If the server is
+        // returning nonsense we can't trust the set-difference, so report 0
+        // and let the user discover the issue via an explicit downloadAll.
+        if (remoteNames.length > MAX_DOWNLOAD_FILE_COUNT) {
+            return 0;
+        }
+        const remoteSet = new Set(remoteNames.map(canonicalizeRemotePath));
+
+        const includePattern = new vscode.RelativePattern(primary, this.config.fileGlob);
+        const excludeGlob = this.findFilesExcludeGlob();
+        const excludePattern = excludeGlob ? new vscode.RelativePattern(primary, excludeGlob) : null;
+        const files = await vscode.workspace.findFiles(includePattern, excludePattern);
+
+        let count = 0;
+        for (const file of files) {
+            if (this.isExcluded(file)) {
+                continue;
+            }
+            let remotePath: string;
+            try {
+                remotePath = this.pathMapper.mapToRemote(file);
+            } catch {
+                // Outside syncDirectory or otherwise not mappable — wouldn't
+                // be pushed by syncAll either, so don't count it.
+                continue;
+            }
+            if (!remoteSet.has(canonicalizeRemotePath(remotePath))) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     // Listing + per-name validation + new/existing partition. Shared by
     // downloadAll() and countNewRemoteFiles() so the two stay in sync on
     // what counts as a downloadable file. Returns null when the caller
@@ -575,6 +623,14 @@ function formatBytes(bytes: number): string {
         return `${(bytes / 1024).toFixed(1)} KB`;
     }
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Normalize a remote (Bitburner-side) path to a single canonical form so
+// set-membership checks across the two ingestion paths agree. PathMapper
+// always emits a leading slash; the server's getFileNames listing sometimes
+// does and sometimes doesn't.
+function canonicalizeRemotePath(p: string): string {
+    return p.startsWith('/') ? p : '/' + p;
 }
 
 // Returns true if `filename`'s extension (case-insensitive) is in the
