@@ -1,17 +1,6760 @@
-"use strict";var yr=Object.create;var ke=Object.defineProperty;var _r=Object.getOwnPropertyDescriptor;var wr=Object.getOwnPropertyNames;var Sr=Object.getPrototypeOf,vr=Object.prototype.hasOwnProperty;var L=(s,e)=>()=>(e||s((e={exports:{}}).exports,e),e.exports),Er=(s,e)=>{for(var t in e)ke(s,t,{get:e[t],enumerable:!0})},At=(s,e,t,r)=>{if(e&&typeof e=="object"||typeof e=="function")for(let i of wr(e))!vr.call(s,i)&&i!==t&&ke(s,i,{get:()=>e[i],enumerable:!(r=_r(e,i))||r.enumerable});return s};var T=(s,e,t)=>(t=s!=null?yr(Sr(s)):{},At(e||!s||!s.__esModule?ke(t,"default",{value:s,enumerable:!0}):t,s)),xr=s=>At(ke({},"__esModule",{value:!0}),s);var U=L((_o,Ft)=>{"use strict";var Bt=["nodebuffer","arraybuffer","fragments"],$t=typeof Blob<"u";$t&&Bt.push("blob");Ft.exports={BINARY_TYPES:Bt,CLOSE_TIMEOUT:3e4,EMPTY_BUFFER:Buffer.alloc(0),GUID:"258EAFA5-E914-47DA-95CA-C5AB0DC85B11",hasBlob:$t,kForOnEventAttribute:Symbol("kIsForOnEventAttribute"),kListener:Symbol("kListener"),kStatusCode:Symbol("status-code"),kWebSocket:Symbol("websocket"),NOOP:()=>{}}});var ge=L((wo,Te)=>{"use strict";var{EMPTY_BUFFER:br}=U(),st=Buffer[Symbol.species];function Cr(s,e){if(s.length===0)return br;if(s.length===1)return s[0];let t=Buffer.allocUnsafe(e),r=0;for(let i=0;i<s.length;i++){let n=s[i];t.set(n,r),r+=n.length}return r<e?new st(t.buffer,t.byteOffset,r):t}function Wt(s,e,t,r,i){for(let n=0;n<i;n++)t[r+n]=s[n]^e[n&3]}function It(s,e){for(let t=0;t<s.length;t++)s[t]^=e[t&3]}function kr(s){return s.length===s.buffer.byteLength?s.buffer:s.buffer.slice(s.byteOffset,s.byteOffset+s.length)}function rt(s){if(rt.readOnly=!0,Buffer.isBuffer(s))return s;let e;return s instanceof ArrayBuffer?e=new st(s):ArrayBuffer.isView(s)?e=new st(s.buffer,s.byteOffset,s.byteLength):(e=Buffer.from(s),rt.readOnly=!1),e}Te.exports={concat:Cr,mask:Wt,toArrayBuffer:kr,toBuffer:rt,unmask:It};if(!process.env.WS_NO_BUFFER_UTIL)try{let s=require("bufferutil");Te.exports.mask=function(e,t,r,i,n){n<48?Wt(e,t,r,i,n):s.mask(e,t,r,i,n)},Te.exports.unmask=function(e,t){e.length<32?It(e,t):s.unmask(e,t)}}catch{}});var Gt=L((So,jt)=>{"use strict";var Ut=Symbol("kDone"),it=Symbol("kRun"),nt=class{constructor(e){this[Ut]=()=>{this.pending--,this[it]()},this.concurrency=e||1/0,this.jobs=[],this.pending=0}add(e){this.jobs.push(e),this[it]()}[it](){if(this.pending!==this.concurrency&&this.jobs.length){let e=this.jobs.shift();this.pending++,e(this[Ut])}}};jt.exports=nt});var ne=L((vo,Ht)=>{"use strict";var me=require("zlib"),qt=ge(),Tr=Gt(),{kStatusCode:Vt}=U(),Or=Buffer[Symbol.species],Nr=Buffer.from([0,0,255,255]),Ne=Symbol("permessage-deflate"),j=Symbol("total-length"),re=Symbol("callback"),V=Symbol("buffers"),ie=Symbol("error"),Oe,ot=class{constructor(e){if(this._options=e||{},this._threshold=this._options.threshold!==void 0?this._options.threshold:1024,this._maxPayload=this._options.maxPayload|0,this._isServer=!!this._options.isServer,this._deflate=null,this._inflate=null,this.params=null,!Oe){let t=this._options.concurrencyLimit!==void 0?this._options.concurrencyLimit:10;Oe=new Tr(t)}}static get extensionName(){return"permessage-deflate"}offer(){let e={};return this._options.serverNoContextTakeover&&(e.server_no_context_takeover=!0),this._options.clientNoContextTakeover&&(e.client_no_context_takeover=!0),this._options.serverMaxWindowBits&&(e.server_max_window_bits=this._options.serverMaxWindowBits),this._options.clientMaxWindowBits?e.client_max_window_bits=this._options.clientMaxWindowBits:this._options.clientMaxWindowBits==null&&(e.client_max_window_bits=!0),e}accept(e){return e=this.normalizeParams(e),this.params=this._isServer?this.acceptAsServer(e):this.acceptAsClient(e),this.params}cleanup(){if(this._inflate&&(this._inflate.close(),this._inflate=null),this._deflate){let e=this._deflate[re];this._deflate.close(),this._deflate=null,e&&e(new Error("The deflate stream was closed while data was being processed"))}}acceptAsServer(e){let t=this._options,r=e.find(i=>!(t.serverNoContextTakeover===!1&&i.server_no_context_takeover||i.server_max_window_bits&&(t.serverMaxWindowBits===!1||typeof t.serverMaxWindowBits=="number"&&t.serverMaxWindowBits>i.server_max_window_bits)||typeof t.clientMaxWindowBits=="number"&&!i.client_max_window_bits));if(!r)throw new Error("None of the extension offers can be accepted");return t.serverNoContextTakeover&&(r.server_no_context_takeover=!0),t.clientNoContextTakeover&&(r.client_no_context_takeover=!0),typeof t.serverMaxWindowBits=="number"&&(r.server_max_window_bits=t.serverMaxWindowBits),typeof t.clientMaxWindowBits=="number"?r.client_max_window_bits=t.clientMaxWindowBits:(r.client_max_window_bits===!0||t.clientMaxWindowBits===!1)&&delete r.client_max_window_bits,r}acceptAsClient(e){let t=e[0];if(this._options.clientNoContextTakeover===!1&&t.client_no_context_takeover)throw new Error('Unexpected parameter "client_no_context_takeover"');if(!t.client_max_window_bits)typeof this._options.clientMaxWindowBits=="number"&&(t.client_max_window_bits=this._options.clientMaxWindowBits);else if(this._options.clientMaxWindowBits===!1||typeof this._options.clientMaxWindowBits=="number"&&t.client_max_window_bits>this._options.clientMaxWindowBits)throw new Error('Unexpected or invalid parameter "client_max_window_bits"');return t}normalizeParams(e){return e.forEach(t=>{Object.keys(t).forEach(r=>{let i=t[r];if(i.length>1)throw new Error(`Parameter "${r}" must have only a single value`);if(i=i[0],r==="client_max_window_bits"){if(i!==!0){let n=+i;if(!Number.isInteger(n)||n<8||n>15)throw new TypeError(`Invalid value for parameter "${r}": ${i}`);i=n}else if(!this._isServer)throw new TypeError(`Invalid value for parameter "${r}": ${i}`)}else if(r==="server_max_window_bits"){let n=+i;if(!Number.isInteger(n)||n<8||n>15)throw new TypeError(`Invalid value for parameter "${r}": ${i}`);i=n}else if(r==="client_no_context_takeover"||r==="server_no_context_takeover"){if(i!==!0)throw new TypeError(`Invalid value for parameter "${r}": ${i}`)}else throw new Error(`Unknown parameter "${r}"`);t[r]=i})}),e}decompress(e,t,r){Oe.add(i=>{this._decompress(e,t,(n,o)=>{i(),r(n,o)})})}compress(e,t,r){Oe.add(i=>{this._compress(e,t,(n,o)=>{i(),r(n,o)})})}_decompress(e,t,r){let i=this._isServer?"client":"server";if(!this._inflate){let n=`${i}_max_window_bits`,o=typeof this.params[n]!="number"?me.Z_DEFAULT_WINDOWBITS:this.params[n];this._inflate=me.createInflateRaw({...this._options.zlibInflateOptions,windowBits:o}),this._inflate[Ne]=this,this._inflate[j]=0,this._inflate[V]=[],this._inflate.on("error",Lr),this._inflate.on("data",zt)}this._inflate[re]=r,this._inflate.write(e),t&&this._inflate.write(Nr),this._inflate.flush(()=>{let n=this._inflate[ie];if(n){this._inflate.close(),this._inflate=null,r(n);return}let o=qt.concat(this._inflate[V],this._inflate[j]);this._inflate._readableState.endEmitted?(this._inflate.close(),this._inflate=null):(this._inflate[j]=0,this._inflate[V]=[],t&&this.params[`${i}_no_context_takeover`]&&this._inflate.reset()),r(null,o)})}_compress(e,t,r){let i=this._isServer?"server":"client";if(!this._deflate){let n=`${i}_max_window_bits`,o=typeof this.params[n]!="number"?me.Z_DEFAULT_WINDOWBITS:this.params[n];this._deflate=me.createDeflateRaw({...this._options.zlibDeflateOptions,windowBits:o}),this._deflate[j]=0,this._deflate[V]=[],this._deflate.on("data",Pr)}this._deflate[re]=r,this._deflate.write(e),this._deflate.flush(me.Z_SYNC_FLUSH,()=>{if(!this._deflate)return;let n=qt.concat(this._deflate[V],this._deflate[j]);t&&(n=new Or(n.buffer,n.byteOffset,n.length-4)),this._deflate[re]=null,this._deflate[j]=0,this._deflate[V]=[],t&&this.params[`${i}_no_context_takeover`]&&this._deflate.reset(),r(null,n)})}};Ht.exports=ot;function Pr(s){this[V].push(s),this[j]+=s.length}function zt(s){if(this[j]+=s.length,this[Ne]._maxPayload<1||this[j]<=this[Ne]._maxPayload){this[V].push(s);return}this[ie]=new RangeError("Max payload size exceeded"),this[ie].code="WS_ERR_UNSUPPORTED_MESSAGE_LENGTH",this[ie][Vt]=1009,this.removeListener("data",zt),this.reset()}function Lr(s){if(this[Ne]._inflate=null,this[ie]){this[re](this[ie]);return}s[Vt]=1007,this[re](s)}});var oe=L((Eo,Pe)=>{"use strict";var{isUtf8:Yt}=require("buffer"),{hasBlob:Rr}=U(),Dr=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,1,1,1,0,0,1,1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0];function Mr(s){return s>=1e3&&s<=1014&&s!==1004&&s!==1005&&s!==1006||s>=3e3&&s<=4999}function at(s){let e=s.length,t=0;for(;t<e;)if((s[t]&128)===0)t++;else if((s[t]&224)===192){if(t+1===e||(s[t+1]&192)!==128||(s[t]&254)===192)return!1;t+=2}else if((s[t]&240)===224){if(t+2>=e||(s[t+1]&192)!==128||(s[t+2]&192)!==128||s[t]===224&&(s[t+1]&224)===128||s[t]===237&&(s[t+1]&224)===160)return!1;t+=3}else if((s[t]&248)===240){if(t+3>=e||(s[t+1]&192)!==128||(s[t+2]&192)!==128||(s[t+3]&192)!==128||s[t]===240&&(s[t+1]&240)===128||s[t]===244&&s[t+1]>143||s[t]>244)return!1;t+=4}else return!1;return!0}function Ar(s){return Rr&&typeof s=="object"&&typeof s.arrayBuffer=="function"&&typeof s.type=="string"&&typeof s.stream=="function"&&(s[Symbol.toStringTag]==="Blob"||s[Symbol.toStringTag]==="File")}Pe.exports={isBlob:Ar,isValidStatusCode:Mr,isValidUTF8:at,tokenChars:Dr};if(Yt)Pe.exports.isValidUTF8=function(s){return s.length<24?at(s):Yt(s)};else if(!process.env.WS_NO_UTF_8_VALIDATE)try{let s=require("utf-8-validate");Pe.exports.isValidUTF8=function(e){return e.length<32?at(e):s(e)}}catch{}});var ut=L((xo,ts)=>{"use strict";var{Writable:Br}=require("stream"),Jt=ne(),{BINARY_TYPES:$r,EMPTY_BUFFER:Xt,kStatusCode:Fr,kWebSocket:Wr}=U(),{concat:ct,toArrayBuffer:Ir,unmask:Ur}=ge(),{isValidStatusCode:jr,isValidUTF8:Zt}=oe(),Le=Buffer[Symbol.species],M=0,Kt=1,Qt=2,es=3,lt=4,ht=5,Re=6,ft=class extends Br{constructor(e={}){super(),this._allowSynchronousEvents=e.allowSynchronousEvents!==void 0?e.allowSynchronousEvents:!0,this._binaryType=e.binaryType||$r[0],this._extensions=e.extensions||{},this._isServer=!!e.isServer,this._maxBufferedChunks=e.maxBufferedChunks|0,this._maxFragments=e.maxFragments|0,this._maxPayload=e.maxPayload|0,this._skipUTF8Validation=!!e.skipUTF8Validation,this[Wr]=void 0,this._bufferedBytes=0,this._buffers=[],this._compressed=!1,this._payloadLength=0,this._mask=void 0,this._fragmented=0,this._masked=!1,this._fin=!1,this._opcode=0,this._totalPayloadLength=0,this._messageLength=0,this._fragments=[],this._errored=!1,this._loop=!1,this._state=M}_write(e,t,r){if(this._opcode===8&&this._state==M)return r();if(this._maxBufferedChunks>0&&this._buffers.length>=this._maxBufferedChunks){r(this.createError(RangeError,"Too many buffered chunks",!1,1008,"WS_ERR_TOO_MANY_BUFFERED_PARTS"));return}this._bufferedBytes+=e.length,this._buffers.push(e),this.startLoop(r)}consume(e){if(this._bufferedBytes-=e,e===this._buffers[0].length)return this._buffers.shift();if(e<this._buffers[0].length){let r=this._buffers[0];return this._buffers[0]=new Le(r.buffer,r.byteOffset+e,r.length-e),new Le(r.buffer,r.byteOffset,e)}let t=Buffer.allocUnsafe(e);do{let r=this._buffers[0],i=t.length-e;e>=r.length?t.set(this._buffers.shift(),i):(t.set(new Uint8Array(r.buffer,r.byteOffset,e),i),this._buffers[0]=new Le(r.buffer,r.byteOffset+e,r.length-e)),e-=r.length}while(e>0);return t}startLoop(e){this._loop=!0;do switch(this._state){case M:this.getInfo(e);break;case Kt:this.getPayloadLength16(e);break;case Qt:this.getPayloadLength64(e);break;case es:this.getMask();break;case lt:this.getData(e);break;case ht:case Re:this._loop=!1;return}while(this._loop);this._errored||e()}getInfo(e){if(this._bufferedBytes<2){this._loop=!1;return}let t=this.consume(2);if((t[0]&48)!==0){let i=this.createError(RangeError,"RSV2 and RSV3 must be clear",!0,1002,"WS_ERR_UNEXPECTED_RSV_2_3");e(i);return}let r=(t[0]&64)===64;if(r&&!this._extensions[Jt.extensionName]){let i=this.createError(RangeError,"RSV1 must be clear",!0,1002,"WS_ERR_UNEXPECTED_RSV_1");e(i);return}if(this._fin=(t[0]&128)===128,this._opcode=t[0]&15,this._payloadLength=t[1]&127,this._opcode===0){if(r){let i=this.createError(RangeError,"RSV1 must be clear",!0,1002,"WS_ERR_UNEXPECTED_RSV_1");e(i);return}if(!this._fragmented){let i=this.createError(RangeError,"invalid opcode 0",!0,1002,"WS_ERR_INVALID_OPCODE");e(i);return}this._opcode=this._fragmented}else if(this._opcode===1||this._opcode===2){if(this._fragmented){let i=this.createError(RangeError,`invalid opcode ${this._opcode}`,!0,1002,"WS_ERR_INVALID_OPCODE");e(i);return}this._compressed=r}else if(this._opcode>7&&this._opcode<11){if(!this._fin){let i=this.createError(RangeError,"FIN must be set",!0,1002,"WS_ERR_EXPECTED_FIN");e(i);return}if(r){let i=this.createError(RangeError,"RSV1 must be clear",!0,1002,"WS_ERR_UNEXPECTED_RSV_1");e(i);return}if(this._payloadLength>125||this._opcode===8&&this._payloadLength===1){let i=this.createError(RangeError,`invalid payload length ${this._payloadLength}`,!0,1002,"WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH");e(i);return}}else{let i=this.createError(RangeError,`invalid opcode ${this._opcode}`,!0,1002,"WS_ERR_INVALID_OPCODE");e(i);return}if(!this._fin&&!this._fragmented&&(this._fragmented=this._opcode),this._masked=(t[1]&128)===128,this._isServer){if(!this._masked){let i=this.createError(RangeError,"MASK must be set",!0,1002,"WS_ERR_EXPECTED_MASK");e(i);return}}else if(this._masked){let i=this.createError(RangeError,"MASK must be clear",!0,1002,"WS_ERR_UNEXPECTED_MASK");e(i);return}this._payloadLength===126?this._state=Kt:this._payloadLength===127?this._state=Qt:this.haveLength(e)}getPayloadLength16(e){if(this._bufferedBytes<2){this._loop=!1;return}this._payloadLength=this.consume(2).readUInt16BE(0),this.haveLength(e)}getPayloadLength64(e){if(this._bufferedBytes<8){this._loop=!1;return}let t=this.consume(8),r=t.readUInt32BE(0);if(r>Math.pow(2,21)-1){let i=this.createError(RangeError,"Unsupported WebSocket frame: payload length > 2^53 - 1",!1,1009,"WS_ERR_UNSUPPORTED_DATA_PAYLOAD_LENGTH");e(i);return}this._payloadLength=r*Math.pow(2,32)+t.readUInt32BE(4),this.haveLength(e)}haveLength(e){if(this._payloadLength&&this._opcode<8&&(this._totalPayloadLength+=this._payloadLength,this._totalPayloadLength>this._maxPayload&&this._maxPayload>0)){let t=this.createError(RangeError,"Max payload size exceeded",!1,1009,"WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");e(t);return}this._masked?this._state=es:this._state=lt}getMask(){if(this._bufferedBytes<4){this._loop=!1;return}this._mask=this.consume(4),this._state=lt}getData(e){let t=Xt;if(this._payloadLength){if(this._bufferedBytes<this._payloadLength){this._loop=!1;return}t=this.consume(this._payloadLength),this._masked&&(this._mask[0]|this._mask[1]|this._mask[2]|this._mask[3])!==0&&Ur(t,this._mask)}if(this._opcode>7){this.controlMessage(t,e);return}if(this._compressed){this._state=ht,this.decompress(t,e);return}if(t.length){if(this._maxFragments>0&&this._fragments.length>=this._maxFragments){let r=this.createError(RangeError,"Too many message fragments",!1,1008,"WS_ERR_TOO_MANY_BUFFERED_PARTS");e(r);return}this._messageLength=this._totalPayloadLength,this._fragments.push(t)}this.dataMessage(e)}decompress(e,t){this._extensions[Jt.extensionName].decompress(e,this._fin,(i,n)=>{if(i)return t(i);if(n.length){if(this._messageLength+=n.length,this._messageLength>this._maxPayload&&this._maxPayload>0){let o=this.createError(RangeError,"Max payload size exceeded",!1,1009,"WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");t(o);return}if(this._maxFragments>0&&this._fragments.length>=this._maxFragments){let o=this.createError(RangeError,"Too many message fragments",!1,1008,"WS_ERR_TOO_MANY_BUFFERED_PARTS");t(o);return}this._fragments.push(n)}this.dataMessage(t),this._state===M&&this.startLoop(t)})}dataMessage(e){if(!this._fin){this._state=M;return}let t=this._messageLength,r=this._fragments;if(this._totalPayloadLength=0,this._messageLength=0,this._fragmented=0,this._fragments=[],this._opcode===2){let i;this._binaryType==="nodebuffer"?i=ct(r,t):this._binaryType==="arraybuffer"?i=Ir(ct(r,t)):this._binaryType==="blob"?i=new Blob(r):i=r,this._allowSynchronousEvents?(this.emit("message",i,!0),this._state=M):(this._state=Re,setImmediate(()=>{this.emit("message",i,!0),this._state=M,this.startLoop(e)}))}else{let i=ct(r,t);if(!this._skipUTF8Validation&&!Zt(i)){let n=this.createError(Error,"invalid UTF-8 sequence",!0,1007,"WS_ERR_INVALID_UTF8");e(n);return}this._state===ht||this._allowSynchronousEvents?(this.emit("message",i,!1),this._state=M):(this._state=Re,setImmediate(()=>{this.emit("message",i,!1),this._state=M,this.startLoop(e)}))}}controlMessage(e,t){if(this._opcode===8){if(e.length===0)this._loop=!1,this.emit("conclude",1005,Xt),this.end();else{let r=e.readUInt16BE(0);if(!jr(r)){let n=this.createError(RangeError,`invalid status code ${r}`,!0,1002,"WS_ERR_INVALID_CLOSE_CODE");t(n);return}let i=new Le(e.buffer,e.byteOffset+2,e.length-2);if(!this._skipUTF8Validation&&!Zt(i)){let n=this.createError(Error,"invalid UTF-8 sequence",!0,1007,"WS_ERR_INVALID_UTF8");t(n);return}this._loop=!1,this.emit("conclude",r,i),this.end()}this._state=M;return}this._allowSynchronousEvents?(this.emit(this._opcode===9?"ping":"pong",e),this._state=M):(this._state=Re,setImmediate(()=>{this.emit(this._opcode===9?"ping":"pong",e),this._state=M,this.startLoop(t)}))}createError(e,t,r,i,n){this._loop=!1,this._errored=!0;let o=new e(r?`Invalid WebSocket frame: ${t}`:t);return Error.captureStackTrace(o,this.createError),o.code=n,o[Fr]=i,o}};ts.exports=ft});var gt=L((Co,is)=>{"use strict";var{Duplex:bo}=require("stream"),{randomFillSync:Gr}=require("crypto"),{types:{isUint8Array:qr}}=require("util"),ss=ne(),{EMPTY_BUFFER:Vr,kWebSocket:zr,NOOP:Hr}=U(),{isBlob:ae,isValidStatusCode:Yr}=oe(),{mask:rs,toBuffer:J}=ge(),A=Symbol("kByteLength"),Jr=Buffer.alloc(4),De=8*1024,X,ce=De,$=0,Xr=1,Zr=2,dt=class s{constructor(e,t,r){this._extensions=t||{},r&&(this._generateMask=r,this._maskBuffer=Buffer.alloc(4)),this._socket=e,this._firstFragment=!0,this._compress=!1,this._bufferedBytes=0,this._queue=[],this._state=$,this.onerror=Hr,this[zr]=void 0}static frame(e,t){let r,i=!1,n=2,o=!1;t.mask&&(r=t.maskBuffer||Jr,t.generateMask?t.generateMask(r):(ce===De&&(X===void 0&&(X=Buffer.alloc(De)),Gr(X,0,De),ce=0),r[0]=X[ce++],r[1]=X[ce++],r[2]=X[ce++],r[3]=X[ce++]),o=(r[0]|r[1]|r[2]|r[3])===0,n=6);let a;typeof e=="string"?(!t.mask||o)&&t[A]!==void 0?a=t[A]:(e=Buffer.from(e),a=e.length):(a=e.length,i=t.mask&&t.readOnly&&!o);let h=a;a>=65536?(n+=8,h=127):a>125&&(n+=2,h=126);let l=Buffer.allocUnsafe(i?a+n:n);return l[0]=t.fin?t.opcode|128:t.opcode,t.rsv1&&(l[0]|=64),l[1]=h,h===126?l.writeUInt16BE(a,2):h===127&&(l[2]=l[3]=0,l.writeUIntBE(a,4,6)),t.mask?(l[1]|=128,l[n-4]=r[0],l[n-3]=r[1],l[n-2]=r[2],l[n-1]=r[3],o?[l,e]:i?(rs(e,r,l,n,a),[l]):(rs(e,r,e,0,a),[l,e])):[l,e]}close(e,t,r,i){let n;if(e===void 0)n=Vr;else{if(typeof e!="number"||!Yr(e))throw new TypeError("First argument must be a valid error code number");if(t===void 0||!t.length)n=Buffer.allocUnsafe(2),n.writeUInt16BE(e,0);else{let a=Buffer.byteLength(t);if(a>123)throw new RangeError("The message must not be greater than 123 bytes");if(n=Buffer.allocUnsafe(2+a),n.writeUInt16BE(e,0),typeof t=="string")n.write(t,2);else if(qr(t))n.set(t,2);else throw new TypeError("Second argument must be a string or a Uint8Array")}}let o={[A]:n.length,fin:!0,generateMask:this._generateMask,mask:r,maskBuffer:this._maskBuffer,opcode:8,readOnly:!1,rsv1:!1};this._state!==$?this.enqueue([this.dispatch,n,!1,o,i]):this.sendFrame(s.frame(n,o),i)}ping(e,t,r){let i,n;if(typeof e=="string"?(i=Buffer.byteLength(e),n=!1):ae(e)?(i=e.size,n=!1):(e=J(e),i=e.length,n=J.readOnly),i>125)throw new RangeError("The data size must not be greater than 125 bytes");let o={[A]:i,fin:!0,generateMask:this._generateMask,mask:t,maskBuffer:this._maskBuffer,opcode:9,readOnly:n,rsv1:!1};ae(e)?this._state!==$?this.enqueue([this.getBlobData,e,!1,o,r]):this.getBlobData(e,!1,o,r):this._state!==$?this.enqueue([this.dispatch,e,!1,o,r]):this.sendFrame(s.frame(e,o),r)}pong(e,t,r){let i,n;if(typeof e=="string"?(i=Buffer.byteLength(e),n=!1):ae(e)?(i=e.size,n=!1):(e=J(e),i=e.length,n=J.readOnly),i>125)throw new RangeError("The data size must not be greater than 125 bytes");let o={[A]:i,fin:!0,generateMask:this._generateMask,mask:t,maskBuffer:this._maskBuffer,opcode:10,readOnly:n,rsv1:!1};ae(e)?this._state!==$?this.enqueue([this.getBlobData,e,!1,o,r]):this.getBlobData(e,!1,o,r):this._state!==$?this.enqueue([this.dispatch,e,!1,o,r]):this.sendFrame(s.frame(e,o),r)}send(e,t,r){let i=this._extensions[ss.extensionName],n=t.binary?2:1,o=t.compress,a,h;typeof e=="string"?(a=Buffer.byteLength(e),h=!1):ae(e)?(a=e.size,h=!1):(e=J(e),a=e.length,h=J.readOnly),this._firstFragment?(this._firstFragment=!1,o&&i&&i.params[i._isServer?"server_no_context_takeover":"client_no_context_takeover"]&&(o=a>=i._threshold),this._compress=o):(o=!1,n=0),t.fin&&(this._firstFragment=!0);let l={[A]:a,fin:t.fin,generateMask:this._generateMask,mask:t.mask,maskBuffer:this._maskBuffer,opcode:n,readOnly:h,rsv1:o};ae(e)?this._state!==$?this.enqueue([this.getBlobData,e,this._compress,l,r]):this.getBlobData(e,this._compress,l,r):this._state!==$?this.enqueue([this.dispatch,e,this._compress,l,r]):this.dispatch(e,this._compress,l,r)}getBlobData(e,t,r,i){this._bufferedBytes+=r[A],this._state=Zr,e.arrayBuffer().then(n=>{if(this._socket.destroyed){let a=new Error("The socket was closed while the blob was being read");process.nextTick(pt,this,a,i);return}this._bufferedBytes-=r[A];let o=J(n);t?this.dispatch(o,t,r,i):(this._state=$,this.sendFrame(s.frame(o,r),i),this.dequeue())}).catch(n=>{process.nextTick(Kr,this,n,i)})}dispatch(e,t,r,i){if(!t){this.sendFrame(s.frame(e,r),i);return}let n=this._extensions[ss.extensionName];this._bufferedBytes+=r[A],this._state=Xr,n.compress(e,r.fin,(o,a)=>{if(this._socket.destroyed){let h=new Error("The socket was closed while data was being compressed");pt(this,h,i);return}this._bufferedBytes-=r[A],this._state=$,r.readOnly=!1,this.sendFrame(s.frame(a,r),i),this.dequeue()})}dequeue(){for(;this._state===$&&this._queue.length;){let e=this._queue.shift();this._bufferedBytes-=e[3][A],Reflect.apply(e[0],this,e.slice(1))}}enqueue(e){this._bufferedBytes+=e[3][A],this._queue.push(e)}sendFrame(e,t){e.length===2?(this._socket.cork(),this._socket.write(e[0]),this._socket.write(e[1],t),this._socket.uncork()):this._socket.write(e[0],t)}};is.exports=dt;function pt(s,e,t){typeof t=="function"&&t(e);for(let r=0;r<s._queue.length;r++){let i=s._queue[r],n=i[i.length-1];typeof n=="function"&&n(e)}}function Kr(s,e,t){pt(s,e,t),s.onerror(e)}});var ds=L((ko,us)=>{"use strict";var{kForOnEventAttribute:ye,kListener:mt}=U(),ns=Symbol("kCode"),os=Symbol("kData"),as=Symbol("kError"),cs=Symbol("kMessage"),ls=Symbol("kReason"),le=Symbol("kTarget"),hs=Symbol("kType"),fs=Symbol("kWasClean"),G=class{constructor(e){this[le]=null,this[hs]=e}get target(){return this[le]}get type(){return this[hs]}};Object.defineProperty(G.prototype,"target",{enumerable:!0});Object.defineProperty(G.prototype,"type",{enumerable:!0});var Z=class extends G{constructor(e,t={}){super(e),this[ns]=t.code===void 0?0:t.code,this[ls]=t.reason===void 0?"":t.reason,this[fs]=t.wasClean===void 0?!1:t.wasClean}get code(){return this[ns]}get reason(){return this[ls]}get wasClean(){return this[fs]}};Object.defineProperty(Z.prototype,"code",{enumerable:!0});Object.defineProperty(Z.prototype,"reason",{enumerable:!0});Object.defineProperty(Z.prototype,"wasClean",{enumerable:!0});var he=class extends G{constructor(e,t={}){super(e),this[as]=t.error===void 0?null:t.error,this[cs]=t.message===void 0?"":t.message}get error(){return this[as]}get message(){return this[cs]}};Object.defineProperty(he.prototype,"error",{enumerable:!0});Object.defineProperty(he.prototype,"message",{enumerable:!0});var _e=class extends G{constructor(e,t={}){super(e),this[os]=t.data===void 0?null:t.data}get data(){return this[os]}};Object.defineProperty(_e.prototype,"data",{enumerable:!0});var Qr={addEventListener(s,e,t={}){for(let i of this.listeners(s))if(!t[ye]&&i[mt]===e&&!i[ye])return;let r;if(s==="message")r=function(n,o){let a=new _e("message",{data:o?n:n.toString()});a[le]=this,Me(e,this,a)};else if(s==="close")r=function(n,o){let a=new Z("close",{code:n,reason:o.toString(),wasClean:this._closeFrameReceived&&this._closeFrameSent});a[le]=this,Me(e,this,a)};else if(s==="error")r=function(n){let o=new he("error",{error:n,message:n.message});o[le]=this,Me(e,this,o)};else if(s==="open")r=function(){let n=new G("open");n[le]=this,Me(e,this,n)};else return;r[ye]=!!t[ye],r[mt]=e,t.once?this.once(s,r):this.on(s,r)},removeEventListener(s,e){for(let t of this.listeners(s))if(t[mt]===e&&!t[ye]){this.removeListener(s,t);break}}};us.exports={CloseEvent:Z,ErrorEvent:he,Event:G,EventTarget:Qr,MessageEvent:_e};function Me(s,e,t){typeof s=="object"&&s.handleEvent?s.handleEvent.call(s,t):s.call(e,t)}});var Ae=L((To,ps)=>{"use strict";var{tokenChars:we}=oe();function F(s,e,t){s[e]===void 0?s[e]=[t]:s[e].push(t)}function ei(s){let e=Object.create(null),t=Object.create(null),r=!1,i=!1,n=!1,o,a,h=-1,l=-1,f=-1,c=0;for(;c<s.length;c++)if(l=s.charCodeAt(c),o===void 0)if(f===-1&&we[l]===1)h===-1&&(h=c);else if(c!==0&&(l===32||l===9))f===-1&&h!==-1&&(f=c);else if(l===59||l===44){if(h===-1)throw new SyntaxError(`Unexpected character at index ${c}`);f===-1&&(f=c);let p=s.slice(h,f);l===44?(F(e,p,t),t=Object.create(null)):o=p,h=f=-1}else throw new SyntaxError(`Unexpected character at index ${c}`);else if(a===void 0)if(f===-1&&we[l]===1)h===-1&&(h=c);else if(l===32||l===9)f===-1&&h!==-1&&(f=c);else if(l===59||l===44){if(h===-1)throw new SyntaxError(`Unexpected character at index ${c}`);f===-1&&(f=c),F(t,s.slice(h,f),!0),l===44&&(F(e,o,t),t=Object.create(null),o=void 0),h=f=-1}else if(l===61&&h!==-1&&f===-1)a=s.slice(h,c),h=f=-1;else throw new SyntaxError(`Unexpected character at index ${c}`);else if(i){if(we[l]!==1)throw new SyntaxError(`Unexpected character at index ${c}`);h===-1?h=c:r||(r=!0),i=!1}else if(n)if(we[l]===1)h===-1&&(h=c);else if(l===34&&h!==-1)n=!1,f=c;else if(l===92)i=!0;else throw new SyntaxError(`Unexpected character at index ${c}`);else if(l===34&&s.charCodeAt(c-1)===61)n=!0;else if(f===-1&&we[l]===1)h===-1&&(h=c);else if(h!==-1&&(l===32||l===9))f===-1&&(f=c);else if(l===59||l===44){if(h===-1)throw new SyntaxError(`Unexpected character at index ${c}`);f===-1&&(f=c);let p=s.slice(h,f);r&&(p=p.replace(/\\/g,""),r=!1),F(t,a,p),l===44&&(F(e,o,t),t=Object.create(null),o=void 0),a=void 0,h=f=-1}else throw new SyntaxError(`Unexpected character at index ${c}`);if(h===-1||n||l===32||l===9)throw new SyntaxError("Unexpected end of input");f===-1&&(f=c);let u=s.slice(h,f);return o===void 0?F(e,u,t):(a===void 0?F(t,u,!0):r?F(t,a,u.replace(/\\/g,"")):F(t,a,u),F(e,o,t)),e}function ti(s){return Object.keys(s).map(e=>{let t=s[e];return Array.isArray(t)||(t=[t]),t.map(r=>[e].concat(Object.keys(r).map(i=>{let n=r[i];return Array.isArray(n)||(n=[n]),n.map(o=>o===!0?i:`${i}=${o}`).join("; ")})).join("; ")).join(", ")}).join(", ")}ps.exports={format:ti,parse:ei}});var We=L((Po,ks)=>{"use strict";var si=require("events"),ri=require("https"),ii=require("http"),ys=require("net"),ni=require("tls"),{randomBytes:oi,createHash:ai}=require("crypto"),{Duplex:Oo,Readable:No}=require("stream"),{URL:yt}=require("url"),z=ne(),ci=ut(),li=gt(),{isBlob:hi}=oe(),{BINARY_TYPES:gs,CLOSE_TIMEOUT:fi,EMPTY_BUFFER:Be,GUID:ui,kForOnEventAttribute:_t,kListener:di,kStatusCode:pi,kWebSocket:x,NOOP:_s}=U(),{EventTarget:{addEventListener:gi,removeEventListener:mi}}=ds(),{format:yi,parse:_i}=Ae(),{toBuffer:wi}=ge(),ws=Symbol("kAborted"),wt=[8,13],q=["CONNECTING","OPEN","CLOSING","CLOSED"],Si=/^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/,v=class s extends si{constructor(e,t,r){super(),this._binaryType=gs[0],this._closeCode=1006,this._closeFrameReceived=!1,this._closeFrameSent=!1,this._closeMessage=Be,this._closeTimer=null,this._errorEmitted=!1,this._extensions={},this._paused=!1,this._protocol="",this._readyState=s.CONNECTING,this._receiver=null,this._sender=null,this._socket=null,e!==null?(this._bufferedAmount=0,this._isServer=!1,this._redirects=0,t===void 0?t=[]:Array.isArray(t)||(typeof t=="object"&&t!==null?(r=t,t=[]):t=[t]),Ss(this,e,t,r)):(this._autoPong=r.autoPong,this._closeTimeout=r.closeTimeout,this._isServer=!0)}get binaryType(){return this._binaryType}set binaryType(e){gs.includes(e)&&(this._binaryType=e,this._receiver&&(this._receiver._binaryType=e))}get bufferedAmount(){return this._socket?this._socket._writableState.length+this._sender._bufferedBytes:this._bufferedAmount}get extensions(){return Object.keys(this._extensions).join()}get isPaused(){return this._paused}get onclose(){return null}get onerror(){return null}get onopen(){return null}get onmessage(){return null}get protocol(){return this._protocol}get readyState(){return this._readyState}get url(){return this._url}setSocket(e,t,r){let i=new ci({allowSynchronousEvents:r.allowSynchronousEvents,binaryType:this.binaryType,extensions:this._extensions,isServer:this._isServer,maxBufferedChunks:r.maxBufferedChunks,maxFragments:r.maxFragments,maxPayload:r.maxPayload,skipUTF8Validation:r.skipUTF8Validation}),n=new li(e,this._extensions,r.generateMask);this._receiver=i,this._sender=n,this._socket=e,i[x]=this,n[x]=this,e[x]=this,i.on("conclude",xi),i.on("drain",bi),i.on("error",Ci),i.on("message",ki),i.on("ping",Ti),i.on("pong",Oi),n.onerror=Ni,e.setTimeout&&e.setTimeout(0),e.setNoDelay&&e.setNoDelay(),t.length>0&&e.unshift(t),e.on("close",xs),e.on("data",Fe),e.on("end",bs),e.on("error",Cs),this._readyState=s.OPEN,this.emit("open")}emitClose(){if(!this._socket){this._readyState=s.CLOSED,this.emit("close",this._closeCode,this._closeMessage);return}this._extensions[z.extensionName]&&this._extensions[z.extensionName].cleanup(),this._receiver.removeAllListeners(),this._readyState=s.CLOSED,this.emit("close",this._closeCode,this._closeMessage)}close(e,t){if(this.readyState!==s.CLOSED){if(this.readyState===s.CONNECTING){R(this,this._req,"WebSocket was closed before the connection was established");return}if(this.readyState===s.CLOSING){this._closeFrameSent&&(this._closeFrameReceived||this._receiver._writableState.errorEmitted)&&this._socket.end();return}this._readyState=s.CLOSING,this._sender.close(e,t,!this._isServer,r=>{r||(this._closeFrameSent=!0,(this._closeFrameReceived||this._receiver._writableState.errorEmitted)&&this._socket.end())}),Es(this)}}pause(){this.readyState===s.CONNECTING||this.readyState===s.CLOSED||(this._paused=!0,this._socket.pause())}ping(e,t,r){if(this.readyState===s.CONNECTING)throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");if(typeof e=="function"?(r=e,e=t=void 0):typeof t=="function"&&(r=t,t=void 0),typeof e=="number"&&(e=e.toString()),this.readyState!==s.OPEN){St(this,e,r);return}t===void 0&&(t=!this._isServer),this._sender.ping(e||Be,t,r)}pong(e,t,r){if(this.readyState===s.CONNECTING)throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");if(typeof e=="function"?(r=e,e=t=void 0):typeof t=="function"&&(r=t,t=void 0),typeof e=="number"&&(e=e.toString()),this.readyState!==s.OPEN){St(this,e,r);return}t===void 0&&(t=!this._isServer),this._sender.pong(e||Be,t,r)}resume(){this.readyState===s.CONNECTING||this.readyState===s.CLOSED||(this._paused=!1,this._receiver._writableState.needDrain||this._socket.resume())}send(e,t,r){if(this.readyState===s.CONNECTING)throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");if(typeof t=="function"&&(r=t,t={}),typeof e=="number"&&(e=e.toString()),this.readyState!==s.OPEN){St(this,e,r);return}let i={binary:typeof e!="string",mask:!this._isServer,compress:!0,fin:!0,...t};this._extensions[z.extensionName]||(i.compress=!1),this._sender.send(e||Be,i,r)}terminate(){if(this.readyState!==s.CLOSED){if(this.readyState===s.CONNECTING){R(this,this._req,"WebSocket was closed before the connection was established");return}this._socket&&(this._readyState=s.CLOSING,this._socket.destroy())}}};Object.defineProperty(v,"CONNECTING",{enumerable:!0,value:q.indexOf("CONNECTING")});Object.defineProperty(v.prototype,"CONNECTING",{enumerable:!0,value:q.indexOf("CONNECTING")});Object.defineProperty(v,"OPEN",{enumerable:!0,value:q.indexOf("OPEN")});Object.defineProperty(v.prototype,"OPEN",{enumerable:!0,value:q.indexOf("OPEN")});Object.defineProperty(v,"CLOSING",{enumerable:!0,value:q.indexOf("CLOSING")});Object.defineProperty(v.prototype,"CLOSING",{enumerable:!0,value:q.indexOf("CLOSING")});Object.defineProperty(v,"CLOSED",{enumerable:!0,value:q.indexOf("CLOSED")});Object.defineProperty(v.prototype,"CLOSED",{enumerable:!0,value:q.indexOf("CLOSED")});["binaryType","bufferedAmount","extensions","isPaused","protocol","readyState","url"].forEach(s=>{Object.defineProperty(v.prototype,s,{enumerable:!0})});["open","error","close","message"].forEach(s=>{Object.defineProperty(v.prototype,`on${s}`,{enumerable:!0,get(){for(let e of this.listeners(s))if(e[_t])return e[di];return null},set(e){for(let t of this.listeners(s))if(t[_t]){this.removeListener(s,t);break}typeof e=="function"&&this.addEventListener(s,e,{[_t]:!0})}})});v.prototype.addEventListener=gi;v.prototype.removeEventListener=mi;ks.exports=v;function Ss(s,e,t,r){let i={allowSynchronousEvents:!0,autoPong:!0,closeTimeout:fi,protocolVersion:wt[1],maxBufferedChunks:1048576,maxFragments:131072,maxPayload:104857600,skipUTF8Validation:!1,perMessageDeflate:!0,followRedirects:!1,maxRedirects:10,...r,socketPath:void 0,hostname:void 0,protocol:void 0,timeout:void 0,method:"GET",host:void 0,path:void 0,port:void 0};if(s._autoPong=i.autoPong,s._closeTimeout=i.closeTimeout,!wt.includes(i.protocolVersion))throw new RangeError(`Unsupported protocol version: ${i.protocolVersion} (supported versions: ${wt.join(", ")})`);let n;if(e instanceof yt)n=e;else try{n=new yt(e)}catch{throw new SyntaxError(`Invalid URL: ${e}`)}n.protocol==="http:"?n.protocol="ws:":n.protocol==="https:"&&(n.protocol="wss:"),s._url=n.href;let o=n.protocol==="wss:",a=n.protocol==="ws+unix:",h;if(n.protocol!=="ws:"&&!o&&!a?h=`The URL's protocol must be one of "ws:", "wss:", "http:", "https:", or "ws+unix:"`:a&&!n.pathname?h="The URL's pathname is empty":n.hash&&(h="The URL contains a fragment identifier"),h){let d=new SyntaxError(h);if(s._redirects===0)throw d;$e(s,d);return}let l=o?443:80,f=oi(16).toString("base64"),c=o?ri.request:ii.request,u=new Set,p;if(i.createConnection=i.createConnection||(o?Ei:vi),i.defaultPort=i.defaultPort||l,i.port=n.port||l,i.host=n.hostname.startsWith("[")?n.hostname.slice(1,-1):n.hostname,i.headers={...i.headers,"Sec-WebSocket-Version":i.protocolVersion,"Sec-WebSocket-Key":f,Connection:"Upgrade",Upgrade:"websocket"},i.path=n.pathname+n.search,i.timeout=i.handshakeTimeout,i.perMessageDeflate&&(p=new z({...i.perMessageDeflate,isServer:!1,maxPayload:i.maxPayload}),i.headers["Sec-WebSocket-Extensions"]=yi({[z.extensionName]:p.offer()})),t.length){for(let d of t){if(typeof d!="string"||!Si.test(d)||u.has(d))throw new SyntaxError("An invalid or duplicated subprotocol was specified");u.add(d)}i.headers["Sec-WebSocket-Protocol"]=t.join(",")}if(i.origin&&(i.protocolVersion<13?i.headers["Sec-WebSocket-Origin"]=i.origin:i.headers.Origin=i.origin),(n.username||n.password)&&(i.auth=`${n.username}:${n.password}`),a){let d=i.path.split(":");i.socketPath=d[0],i.path=d[1]}let g;if(i.followRedirects){if(s._redirects===0){s._originalIpc=a,s._originalSecure=o,s._originalHostOrSocketPath=a?i.socketPath:n.host;let d=r&&r.headers;if(r={...r,headers:{}},d)for(let[y,w]of Object.entries(d))r.headers[y.toLowerCase()]=w}else if(s.listenerCount("redirect")===0){let d=a?s._originalIpc?i.socketPath===s._originalHostOrSocketPath:!1:s._originalIpc?!1:n.host===s._originalHostOrSocketPath;(!d||s._originalSecure&&!o)&&(delete i.headers.authorization,delete i.headers.cookie,d||delete i.headers.host,i.auth=void 0)}i.auth&&!r.headers.authorization&&(r.headers.authorization="Basic "+Buffer.from(i.auth).toString("base64")),g=s._req=c(i),s._redirects&&s.emit("redirect",s.url,g)}else g=s._req=c(i);i.timeout&&g.on("timeout",()=>{R(s,g,"Opening handshake has timed out")}),g.on("error",d=>{g===null||g[ws]||(g=s._req=null,$e(s,d))}),g.on("response",d=>{let y=d.headers.location,w=d.statusCode;if(y&&i.followRedirects&&w>=300&&w<400){if(++s._redirects>i.maxRedirects){R(s,g,"Maximum redirects exceeded");return}g.abort();let S;try{S=new yt(y,e)}catch{let C=new SyntaxError(`Invalid URL: ${y}`);$e(s,C);return}Ss(s,S,t,r)}else s.emit("unexpected-response",g,d)||R(s,g,`Unexpected server response: ${d.statusCode}`)}),g.on("upgrade",(d,y,w)=>{if(s.emit("upgrade",d),s.readyState!==v.CONNECTING)return;g=s._req=null;let S=d.headers.upgrade;if(S===void 0||S.toLowerCase()!=="websocket"){R(s,y,"Invalid Upgrade header");return}let P=ai("sha1").update(f+ui).digest("base64");if(d.headers["sec-websocket-accept"]!==P){R(s,y,"Invalid Sec-WebSocket-Accept header");return}let C=d.headers["sec-websocket-protocol"],k;if(C!==void 0?u.size?u.has(C)||(k="Server sent an invalid subprotocol"):k="Server sent a subprotocol but none was requested":u.size&&(k="Server sent no subprotocol"),k){R(s,y,k);return}C&&(s._protocol=C);let pe=d.headers["sec-websocket-extensions"];if(pe!==void 0){if(!p){R(s,y,"Server sent a Sec-WebSocket-Extensions header but no extension was requested");return}let se;try{se=_i(pe)}catch{R(s,y,"Invalid Sec-WebSocket-Extensions header");return}let Mt=Object.keys(se);if(Mt.length!==1||Mt[0]!==z.extensionName){R(s,y,"Server indicated an extension that was not requested");return}try{p.accept(se[z.extensionName])}catch{R(s,y,"Invalid Sec-WebSocket-Extensions header");return}s._extensions[z.extensionName]=p}s.setSocket(y,w,{allowSynchronousEvents:i.allowSynchronousEvents,generateMask:i.generateMask,maxBufferedChunks:i.maxBufferedChunks,maxFragments:i.maxFragments,maxPayload:i.maxPayload,skipUTF8Validation:i.skipUTF8Validation})}),i.finishRequest?i.finishRequest(g,s):g.end()}function $e(s,e){s._readyState=v.CLOSING,s._errorEmitted=!0,s.emit("error",e),s.emitClose()}function vi(s){return s.path=s.socketPath,ys.connect(s)}function Ei(s){return s.path=void 0,!s.servername&&s.servername!==""&&(s.servername=ys.isIP(s.host)?"":s.host),ni.connect(s)}function R(s,e,t){s._readyState=v.CLOSING;let r=new Error(t);Error.captureStackTrace(r,R),e.setHeader?(e[ws]=!0,e.abort(),e.socket&&!e.socket.destroyed&&e.socket.destroy(),process.nextTick($e,s,r)):(e.destroy(r),e.once("error",s.emit.bind(s,"error")),e.once("close",s.emitClose.bind(s)))}function St(s,e,t){if(e){let r=hi(e)?e.size:wi(e).length;s._socket?s._sender._bufferedBytes+=r:s._bufferedAmount+=r}if(t){let r=new Error(`WebSocket is not open: readyState ${s.readyState} (${q[s.readyState]})`);process.nextTick(t,r)}}function xi(s,e){let t=this[x];t._closeFrameReceived=!0,t._closeMessage=e,t._closeCode=s,t._socket[x]!==void 0&&(t._socket.removeListener("data",Fe),process.nextTick(vs,t._socket),s===1005?t.close():t.close(s,e))}function bi(){let s=this[x];s.isPaused||s._socket.resume()}function Ci(s){let e=this[x];e._socket[x]!==void 0&&(e._socket.removeListener("data",Fe),process.nextTick(vs,e._socket),e.close(s[pi])),e._errorEmitted||(e._errorEmitted=!0,e.emit("error",s))}function ms(){this[x].emitClose()}function ki(s,e){this[x].emit("message",s,e)}function Ti(s){let e=this[x];e._autoPong&&e.pong(s,!this._isServer,_s),e.emit("ping",s)}function Oi(s){this[x].emit("pong",s)}function vs(s){s.resume()}function Ni(s){let e=this[x];e.readyState!==v.CLOSED&&(e.readyState===v.OPEN&&(e._readyState=v.CLOSING,Es(e)),this._socket.end(),e._errorEmitted||(e._errorEmitted=!0,e.emit("error",s)))}function Es(s){s._closeTimer=setTimeout(s._socket.destroy.bind(s._socket),s._closeTimeout)}function xs(){let s=this[x];if(this.removeListener("close",xs),this.removeListener("data",Fe),this.removeListener("end",bs),s._readyState=v.CLOSING,!this._readableState.endEmitted&&!s._closeFrameReceived&&!s._receiver._writableState.errorEmitted&&this._readableState.length!==0){let e=this.read(this._readableState.length);s._receiver.write(e)}s._receiver.end(),this[x]=void 0,clearTimeout(s._closeTimer),s._receiver._writableState.finished||s._receiver._writableState.errorEmitted?s.emitClose():(s._receiver.on("error",ms),s._receiver.on("finish",ms))}function Fe(s){this[x]._receiver.write(s)||this.pause()}function bs(){let s=this[x];s._readyState=v.CLOSING,s._receiver.end(),this.end()}function Cs(){let s=this[x];this.removeListener("error",Cs),this.on("error",_s),s&&(s._readyState=v.CLOSING,this.destroy())}});var Ps=L((Ro,Ns)=>{"use strict";var Lo=We(),{Duplex:Pi}=require("stream");function Ts(s){s.emit("close")}function Li(){!this.destroyed&&this._writableState.finished&&this.destroy()}function Os(s){this.removeListener("error",Os),this.destroy(),this.listenerCount("error")===0&&this.emit("error",s)}function Ri(s,e){let t=!0,r=new Pi({...e,autoDestroy:!1,emitClose:!1,objectMode:!1,writableObjectMode:!1});return s.on("message",function(n,o){let a=!o&&r._readableState.objectMode?n.toString():n;r.push(a)||s.pause()}),s.once("error",function(n){r.destroyed||(t=!1,r.destroy(n))}),s.once("close",function(){r.destroyed||r.push(null)}),r._destroy=function(i,n){if(s.readyState===s.CLOSED){n(i),process.nextTick(Ts,r);return}let o=!1;s.once("error",function(h){o=!0,n(h)}),s.once("close",function(){o||n(i),process.nextTick(Ts,r)}),t&&s.terminate()},r._final=function(i){if(s.readyState===s.CONNECTING){s.once("open",function(){r._final(i)});return}s._socket!==null&&(s._socket._writableState.finished?(i(),r._readableState.endEmitted&&r.destroy()):(s._socket.once("finish",function(){i()}),s.close()))},r._read=function(){s.isPaused&&s.resume()},r._write=function(i,n,o){if(s.readyState===s.CONNECTING){s.once("open",function(){r._write(i,n,o)});return}s.send(i,o)},r.on("end",Li),r.on("error",Os),r}Ns.exports=Ri});var vt=L((Do,Ls)=>{"use strict";var{tokenChars:Di}=oe();function Mi(s){let e=new Set,t=-1,r=-1,i=0;for(i;i<s.length;i++){let o=s.charCodeAt(i);if(r===-1&&Di[o]===1)t===-1&&(t=i);else if(i!==0&&(o===32||o===9))r===-1&&t!==-1&&(r=i);else if(o===44){if(t===-1)throw new SyntaxError(`Unexpected character at index ${i}`);r===-1&&(r=i);let a=s.slice(t,r);if(e.has(a))throw new SyntaxError(`The "${a}" subprotocol is duplicated`);e.add(a),t=r=-1}else throw new SyntaxError(`Unexpected character at index ${i}`)}if(t===-1||r!==-1)throw new SyntaxError("Unexpected end of input");let n=s.slice(t,i);if(e.has(n))throw new SyntaxError(`The "${n}" subprotocol is duplicated`);return e.add(n),e}Ls.exports={parse:Mi}});var Fs=L((Ao,$s)=>{"use strict";var Ai=require("events"),Ie=require("http"),{Duplex:Mo}=require("stream"),{createHash:Bi}=require("crypto"),Rs=Ae(),K=ne(),$i=vt(),Fi=We(),{CLOSE_TIMEOUT:Wi,GUID:Ii,kWebSocket:Ui}=U(),ji=/^[+/0-9A-Za-z]{22}==$/,Ds=0,Ms=1,Bs=2,Et=class extends Ai{constructor(e,t){if(super(),e={allowSynchronousEvents:!0,autoPong:!0,maxBufferedChunks:1024*1024,maxFragments:128*1024,maxPayload:100*1024*1024,skipUTF8Validation:!1,perMessageDeflate:!1,handleProtocols:null,clientTracking:!0,closeTimeout:Wi,verifyClient:null,noServer:!1,backlog:null,server:null,host:null,path:null,port:null,WebSocket:Fi,...e},e.port==null&&!e.server&&!e.noServer||e.port!=null&&(e.server||e.noServer)||e.server&&e.noServer)throw new TypeError('One and only one of the "port", "server", or "noServer" options must be specified');if(e.port!=null?(this._server=Ie.createServer((r,i)=>{let n=Ie.STATUS_CODES[426];i.writeHead(426,{"Content-Length":n.length,"Content-Type":"text/plain"}),i.end(n)}),this._server.listen(e.port,e.host,e.backlog,t)):e.server&&(this._server=e.server),this._server){let r=this.emit.bind(this,"connection");this._removeListeners=Gi(this._server,{listening:this.emit.bind(this,"listening"),error:this.emit.bind(this,"error"),upgrade:(i,n,o)=>{this.handleUpgrade(i,n,o,r)}})}e.perMessageDeflate===!0&&(e.perMessageDeflate={}),e.clientTracking&&(this.clients=new Set,this._shouldEmitClose=!1),this.options=e,this._state=Ds}address(){if(this.options.noServer)throw new Error('The server is operating in "noServer" mode');return this._server?this._server.address():null}close(e){if(this._state===Bs){e&&this.once("close",()=>{e(new Error("The server is not running"))}),process.nextTick(Se,this);return}if(e&&this.once("close",e),this._state!==Ms)if(this._state=Ms,this.options.noServer||this.options.server)this._server&&(this._removeListeners(),this._removeListeners=this._server=null),this.clients?this.clients.size?this._shouldEmitClose=!0:process.nextTick(Se,this):process.nextTick(Se,this);else{let t=this._server;this._removeListeners(),this._removeListeners=this._server=null,t.close(()=>{Se(this)})}}shouldHandle(e){if(this.options.path){let t=e.url.indexOf("?");if((t!==-1?e.url.slice(0,t):e.url)!==this.options.path)return!1}return!0}handleUpgrade(e,t,r,i){t.on("error",As);let n=e.headers["sec-websocket-key"],o=e.headers.upgrade,a=+e.headers["sec-websocket-version"];if(e.method!=="GET"){Q(this,e,t,405,"Invalid HTTP method");return}if(o===void 0||o.toLowerCase()!=="websocket"){Q(this,e,t,400,"Invalid Upgrade header");return}if(n===void 0||!ji.test(n)){Q(this,e,t,400,"Missing or invalid Sec-WebSocket-Key header");return}if(a!==13&&a!==8){Q(this,e,t,400,"Missing or invalid Sec-WebSocket-Version header",{"Sec-WebSocket-Version":"13, 8"});return}if(!this.shouldHandle(e)){ve(t,400);return}let h=e.headers["sec-websocket-protocol"],l=new Set;if(h!==void 0)try{l=$i.parse(h)}catch{Q(this,e,t,400,"Invalid Sec-WebSocket-Protocol header");return}let f=e.headers["sec-websocket-extensions"],c={};if(this.options.perMessageDeflate&&f!==void 0){let u=new K({...this.options.perMessageDeflate,isServer:!0,maxPayload:this.options.maxPayload});try{let p=Rs.parse(f);p[K.extensionName]&&(u.accept(p[K.extensionName]),c[K.extensionName]=u)}catch{Q(this,e,t,400,"Invalid or unacceptable Sec-WebSocket-Extensions header");return}}if(this.options.verifyClient){let u={origin:e.headers[`${a===8?"sec-websocket-origin":"origin"}`],secure:!!(e.socket.authorized||e.socket.encrypted),req:e};if(this.options.verifyClient.length===2){this.options.verifyClient(u,(p,g,d,y)=>{if(!p)return ve(t,g||401,d,y);this.completeUpgrade(c,n,l,e,t,r,i)});return}if(!this.options.verifyClient(u))return ve(t,401)}this.completeUpgrade(c,n,l,e,t,r,i)}completeUpgrade(e,t,r,i,n,o,a){if(!n.readable||!n.writable)return n.destroy();if(n[Ui])throw new Error("server.handleUpgrade() was called more than once with the same socket, possibly due to a misconfiguration");if(this._state>Ds)return ve(n,503);let l=["HTTP/1.1 101 Switching Protocols","Upgrade: websocket","Connection: Upgrade",`Sec-WebSocket-Accept: ${Bi("sha1").update(t+Ii).digest("base64")}`],f=new this.options.WebSocket(null,void 0,this.options);if(r.size){let c=this.options.handleProtocols?this.options.handleProtocols(r,i):r.values().next().value;c&&(l.push(`Sec-WebSocket-Protocol: ${c}`),f._protocol=c)}if(e[K.extensionName]){let c=e[K.extensionName].params,u=Rs.format({[K.extensionName]:[c]});l.push(`Sec-WebSocket-Extensions: ${u}`),f._extensions=e}this.emit("headers",l,i),n.write(l.concat(`\r
-`).join(`\r
-`)),n.removeListener("error",As),f.setSocket(n,o,{allowSynchronousEvents:this.options.allowSynchronousEvents,maxBufferedChunks:this.options.maxBufferedChunks,maxFragments:this.options.maxFragments,maxPayload:this.options.maxPayload,skipUTF8Validation:this.options.skipUTF8Validation}),this.clients&&(this.clients.add(f),f.on("close",()=>{this.clients.delete(f),this._shouldEmitClose&&!this.clients.size&&process.nextTick(Se,this)})),a(f,i)}};$s.exports=Et;function Gi(s,e){for(let t of Object.keys(e))s.on(t,e[t]);return function(){for(let r of Object.keys(e))s.removeListener(r,e[r])}}function Se(s){s._state=Bs,s.emit("close")}function As(){this.destroy()}function ve(s,e,t,r){t=t||Ie.STATUS_CODES[e],r={Connection:"close","Content-Type":"text/html","Content-Length":Buffer.byteLength(t),...r},s.once("finish",s.destroy),s.end(`HTTP/1.1 ${e} ${Ie.STATUS_CODES[e]}\r
-`+Object.keys(r).map(i=>`${i}: ${r[i]}`).join(`\r
-`)+`\r
-\r
-`+t)}function Q(s,e,t,r,i,n){if(s.listenerCount("wsClientError")){let o=new Error(i);Error.captureStackTrace(o,Q),s.emit("wsClientError",o,t,e)}else ve(t,r,i,n)}});var mo={};Er(mo,{activate:()=>ho,deactivate:()=>po});module.exports=xr(mo);var _=T(require("vscode"));var qi=T(Ps(),1),Vi=T(Ae(),1),zi=T(ne(),1),Hi=T(ut(),1),Yi=T(gt(),1),Ji=T(vt(),1),Ue=T(We(),1),xt=T(Fs(),1);var Is=require("events"),Ws=5,Xi=200,je=class extends Is.EventEmitter{server=null;client=null;_state="stopped";get state(){return this._state}get isConnected(){return this.client!==null&&this.client.readyState===Ue.default.OPEN}async start(e){this.server&&await this.stop();let t;for(let r=1;r<=Ws;r++)try{await this.startOnce(e);return}catch(i){if(t=i instanceof Error?i:new Error(String(i)),!/already in use/.test(t.message)||r===Ws)throw t;await Zi(Xi)}throw t??new Error("start() failed")}startOnce(e){return new Promise((t,r)=>{let i=!1;this.server=new xt.default({port:e,host:"127.0.0.1"}),this.server.on("listening",()=>{i=!0,this.setState("waiting"),t()}),this.server.on("error",n=>{i?(this.setState("error"),this.emit("error",n)):(this.server=null,i=!0,this.setState("error"),n.code==="EADDRINUSE"?r(new Error(`Port ${e} is already in use`)):r(n))}),this.server.on("connection",n=>{if(this.client){let o=this.client;this.client=null,this.emit("disconnected"),o.close()}this.client=n,this.setState("connected"),this.emit("connected"),n.on("message",o=>{let a;try{a=JSON.parse(o.toString())}catch{this.emit("error",new Error("Failed to parse message: invalid JSON"));return}if(a===null||typeof a!="object"||Array.isArray(a)){let h=Array.isArray(a)?"array":a===null?"null":typeof a;this.emit("error",new Error(`Failed to parse message: expected JSON object, got ${h}`));return}this.emit("message",a)}),n.on("close",()=>{this.client===n&&(this.client=null,this.setState(this.server?"waiting":"stopped"),this.emit("disconnected"))}),n.on("error",o=>{this.client===n&&(this.client=null,this.setState(this.server?"waiting":"stopped"),this.emit("disconnected")),this.emit("error",o)})})})}stop(){return new Promise(e=>{this.client&&(this.client.close(),this.client=null,this.emit("disconnected")),this.server?this.server.close(()=>{this.server=null,this.setState("stopped"),e()}):(this.setState("stopped"),e())})}send(e){if(this.client&&this.client.readyState===Ue.default.OPEN)this.client.send(e);else throw new Error("No active Bitburner connection")}setState(e){this._state=e,this.emit("stateChanged",e)}};function Zi(s){return new Promise(e=>setTimeout(e,s))}var Ge=class{constructor(e,t=1e4){this.server=e;this.timeout=t,this.onMessage=r=>this.handleMessage(r),this.onDisconnected=()=>this.rejectAllPending("Bitburner disconnected"),this.server.on("message",this.onMessage),this.server.on("disconnected",this.onDisconnected)}server;nextId=1;pending=new Map;timeout;onMessage;onDisconnected;request(e,t){return new Promise((r,i)=>{if(!this.server.isConnected){i(new Error("Not connected to Bitburner"));return}let n=this.nextId++,o={jsonrpc:"2.0",id:n,method:e,params:t},a=setTimeout(()=>{this.pending.delete(n),i(new Error(`Request "${e}" timed out after ${this.timeout}ms`))},this.timeout);this.pending.set(n,{resolve:r,reject:i,timer:a});try{this.server.send(JSON.stringify(o))}catch(h){clearTimeout(a),this.pending.delete(n),i(h instanceof Error?h:new Error(String(h)))}})}handleMessage(e){if(!Us(e))return;let t=e.id;if(typeof t!="number")return;let r=this.pending.get(t);if(!r)return;this.pending.delete(t),clearTimeout(r.timer);let i=e.error;if(i!=null){let n=Us(i)&&typeof i.message=="string"?i.message:`RPC error with malformed shape: ${Ki(i)}`;r.reject(new Error(n));return}r.resolve(e.result)}dispose(){this.server.off("message",this.onMessage),this.server.off("disconnected",this.onDisconnected),this.rejectAllPending("Client disposed")}rejectAllPending(e){if(this.pending.size===0)return;let t=Array.from(this.pending.values());this.pending.clear();for(let r of t)clearTimeout(r.timer),r.reject(new Error(e))}};function Us(s){return typeof s=="object"&&s!==null&&!Array.isArray(s)}function Ki(s){try{return JSON.stringify(s)??String(s)}catch{return String(s)}}var qe=class{constructor(e,t="home"){this.rpc=e;this.defaultServer=t}rpc;defaultServer;async pushFile(e,t,r){let i={filename:e,content:t,server:r??this.defaultServer};return this.rpc.request("pushFile",i)}async getFile(e,t){let r={filename:e,server:t??this.defaultServer};return this.rpc.request("getFile",r)}async getFileNames(e){let t={server:e??this.defaultServer};return this.rpc.request("getFileNames",t)}async getAllFiles(){return this.rpc.request("getAllFiles")}async getDefinitionFile(){return this.rpc.request("getDefinitionFile")}};var Gs=T(require("vscode")),Qi="bitburnerSync",Ve=class{get config(){return Gs.workspace.getConfiguration(Qi)}get port(){return this.config.get("port",12525)}get autoSync(){return this.config.get("autoSync",!0)}get targetServer(){return this.config.get("targetServer","home")}get fileExtensions(){let e=this.config.inspect("fileExtensions");return(e?.globalValue!==void 0||e?.workspaceValue!==void 0||e?.workspaceFolderValue!==void 0||e?.globalLanguageValue!==void 0||e?.workspaceLanguageValue!==void 0||e?.workspaceFolderLanguageValue!==void 0||e?.defaultLanguageValue!==void 0?this.config.get("fileExtensions",[])??[]:en.slice()).map(i=>i.trim().toLowerCase()).map(i=>i.replace(/^\.+/,"")).filter(i=>i.length>0).map(i=>`.${i}`)}get showNotifications(){return this.config.get("showNotifications",!0)}get autoStart(){return this.config.get("autoStart",!1)}get autoDownloadDefinitions(){return this.config.get("autoDownloadDefinitions",!0)}get syncDirectory(){let e=this.normalizedSyncDirectory();return js(e)?"":e}syncDirectoryError(){let e=this.config.get("syncDirectory","");if(!e)return null;let t=this.normalizedSyncDirectory();return js(t)?`bitburnerSync.syncDirectory has been ignored because it would escape the workspace: ${JSON.stringify(e)}. Falling back to the workspace root.`:null}normalizedSyncDirectory(){return this.config.get("syncDirectory","").replace(/\\/g,"/").replace(/^\/+/,"").replace(/\/+$/,"")}get fileGlob(){let e=this.fileExtensions.map(r=>r.replace(".",""));return e.length===0?"__bitburnerSync_no_extensions_configured__":`${this.syncDirectory?`${this.syncDirectory}/`:""}**/*.{${e.join(",")}}`}get exclude(){return this.config.get("exclude",[]).map(t=>t.trim().replace(/\\/g,"/")).filter(t=>t.length>0)}},en=[".js",".ts",".jsx",".tsx",".txt",".json",".css",".py"];function js(s){return s?!!(s.split("/").some(e=>e==="..")||/^[A-Za-z]:/.test(s)):!1}var Xe=T(require("path")),m=T(require("vscode"));var bt=(s,e,t)=>{let r=s instanceof RegExp?qs(s,t):s,i=e instanceof RegExp?qs(e,t):e,n=r!==null&&i!=null&&tn(r,i,t);return n&&{start:n[0],end:n[1],pre:t.slice(0,n[0]),body:t.slice(n[0]+r.length,n[1]),post:t.slice(n[1]+i.length)}},qs=(s,e)=>{let t=e.match(s);return t?t[0]:null},tn=(s,e,t)=>{let r,i,n,o,a,h=t.indexOf(s),l=t.indexOf(e,h+1),f=h;if(h>=0&&l>0){if(s===e)return[h,l];for(r=[],n=t.length;f>=0&&!a;){if(f===h)r.push(f),h=t.indexOf(s,f+1);else if(r.length===1){let c=r.pop();c!==void 0&&(a=[c,l])}else i=r.pop(),i!==void 0&&i<n&&(n=i,o=l),l=t.indexOf(e,f+1);f=h<l&&h>=0?h:l}r.length&&o!==void 0&&(a=[n,o])}return a};var Vs="\0SLASH"+Math.random()+"\0",zs="\0OPEN"+Math.random()+"\0",kt="\0CLOSE"+Math.random()+"\0",Hs="\0COMMA"+Math.random()+"\0",Ys="\0PERIOD"+Math.random()+"\0",sn=new RegExp(Vs,"g"),rn=new RegExp(zs,"g"),nn=new RegExp(kt,"g"),on=new RegExp(Hs,"g"),an=new RegExp(Ys,"g"),cn=/\\\\/g,ln=/\\{/g,hn=/\\}/g,fn=/\\,/g,un=/\\\./g,dn=1e5;function Ct(s){return isNaN(s)?s.charCodeAt(0):parseInt(s,10)}function pn(s){return s.replace(cn,Vs).replace(ln,zs).replace(hn,kt).replace(fn,Hs).replace(un,Ys)}function gn(s){return s.replace(sn,"\\").replace(rn,"{").replace(nn,"}").replace(on,",").replace(an,".")}function Js(s){if(!s)return[""];let e=[],t=bt("{","}",s);if(!t)return s.split(",");let{pre:r,body:i,post:n}=t,o=r.split(",");o[o.length-1]+="{"+i+"}";let a=Js(n);return n.length&&(o[o.length-1]+=a.shift(),o.push.apply(o,a)),e.push.apply(e,o),e}function Xs(s,e={}){if(!s)return[];let{max:t=dn}=e;return s.slice(0,2)==="{}"&&(s="\\{\\}"+s.slice(2)),Ee(pn(s),t,!0).map(gn)}function mn(s){return"{"+s+"}"}function yn(s){return/^-?0\d/.test(s)}function _n(s,e){return s<=e}function wn(s,e){return s>=e}function Ee(s,e,t){let r=[],i=bt("{","}",s);if(!i)return[s];let n=i.pre,o=i.post.length?Ee(i.post,e,!1):[""];if(/\$$/.test(i.pre))for(let a=0;a<o.length&&a<e;a++){let h=n+"{"+i.body+"}"+o[a];r.push(h)}else{let a=/^-?\d+\.\.-?\d+(?:\.\.-?\d+)?$/.test(i.body),h=/^[a-zA-Z]\.\.[a-zA-Z](?:\.\.-?\d+)?$/.test(i.body),l=a||h,f=i.body.indexOf(",")>=0;if(!l&&!f)return i.post.match(/,(?!,).*\}/)?(s=i.pre+"{"+i.body+kt+i.post,Ee(s,e,!0)):[s];let c;if(l)c=i.body.split(/\.\./);else if(c=Js(i.body),c.length===1&&c[0]!==void 0&&(c=Ee(c[0],e,!1).map(mn),c.length===1))return o.map(p=>i.pre+c[0]+p);let u;if(l&&c[0]!==void 0&&c[1]!==void 0){let p=Ct(c[0]),g=Ct(c[1]),d=Math.max(c[0].length,c[1].length),y=c.length===3&&c[2]!==void 0?Math.max(Math.abs(Ct(c[2])),1):1,w=_n;g<p&&(y*=-1,w=wn);let P=c.some(yn);u=[];for(let C=p;w(C,g)&&u.length<e;C+=y){let k;if(h)k=String.fromCharCode(C),k==="\\"&&(k="");else if(k=String(C),P){let pe=d-k.length;if(pe>0){let se=new Array(pe+1).join("0");C<0?k="-"+se+k.slice(1):k=se+k}}u.push(k)}}else{u=[];for(let p=0;p<c.length;p++)u.push.apply(u,Ee(c[p],e,!1))}for(let p=0;p<u.length;p++)for(let g=0;g<o.length&&r.length<e;g++){let d=n+u[p]+o[g];(!t||l||d)&&r.push(d)}}return r}var xe=s=>{if(typeof s!="string")throw new TypeError("invalid pattern");if(s.length>65536)throw new TypeError("pattern is too long")};var Sn={"[:alnum:]":["\\p{L}\\p{Nl}\\p{Nd}",!0],"[:alpha:]":["\\p{L}\\p{Nl}",!0],"[:ascii:]":["\\x00-\\x7f",!1],"[:blank:]":["\\p{Zs}\\t",!0],"[:cntrl:]":["\\p{Cc}",!0],"[:digit:]":["\\p{Nd}",!0],"[:graph:]":["\\p{Z}\\p{C}",!0,!0],"[:lower:]":["\\p{Ll}",!0],"[:print:]":["\\p{C}",!0],"[:punct:]":["\\p{P}",!0],"[:space:]":["\\p{Z}\\t\\r\\n\\v\\f",!0],"[:upper:]":["\\p{Lu}",!0],"[:word:]":["\\p{L}\\p{Nl}\\p{Nd}\\p{Pc}",!0],"[:xdigit:]":["A-Fa-f0-9",!1]},be=s=>s.replace(/[[\]\\-]/g,"\\$&"),vn=s=>s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g,"\\$&"),Zs=s=>s.join(""),Ks=(s,e)=>{let t=e;if(s.charAt(t)!=="[")throw new Error("not in a brace expression");let r=[],i=[],n=t+1,o=!1,a=!1,h=!1,l=!1,f=t,c="";e:for(;n<s.length;){let d=s.charAt(n);if((d==="!"||d==="^")&&n===t+1){l=!0,n++;continue}if(d==="]"&&o&&!h){f=n+1;break}if(o=!0,d==="\\"&&!h){h=!0,n++;continue}if(d==="["&&!h){for(let[y,[w,S,P]]of Object.entries(Sn))if(s.startsWith(y,n)){if(c)return["$.",!1,s.length-t,!0];n+=y.length,P?i.push(w):r.push(w),a=a||S;continue e}}if(h=!1,c){d>c?r.push(be(c)+"-"+be(d)):d===c&&r.push(be(d)),c="",n++;continue}if(s.startsWith("-]",n+1)){r.push(be(d+"-")),n+=2;continue}if(s.startsWith("-",n+1)){c=d,n+=2;continue}r.push(be(d)),n++}if(f<n)return["",!1,0,!1];if(!r.length&&!i.length)return["$.",!1,s.length-t,!0];if(i.length===0&&r.length===1&&/^\\?.$/.test(r[0])&&!l){let d=r[0].length===2?r[0].slice(-1):r[0];return[vn(d),!1,f-t,!1]}let u="["+(l?"^":"")+Zs(r)+"]",p="["+(l?"":"^")+Zs(i)+"]";return[r.length&&i.length?"("+u+"|"+p+")":r.length?u:p,a,f-t,!0]};var H=(s,{windowsPathsNoEscape:e=!1,magicalBraces:t=!0}={})=>t?e?s.replace(/\[([^/\\])\]/g,"$1"):s.replace(/((?!\\).|^)\[([^/\\])\]/g,"$1$2").replace(/\\([^/])/g,"$1"):e?s.replace(/\[([^/\\{}])\]/g,"$1"):s.replace(/((?!\\).|^)\[([^/\\{}])\]/g,"$1$2").replace(/\\([^/{}])/g,"$1");var N,En=new Set(["!","?","+","*","@"]),Tt=s=>En.has(s),Qs=s=>Tt(s.type),xn=new Map([["!",["@"]],["?",["?","@"]],["@",["@"]],["*",["*","+","?","@"]],["+",["+","@"]]]),bn=new Map([["!",["?"]],["@",["?"]],["+",["?","*"]]]),Cn=new Map([["!",["?","@"]],["?",["?","@"]],["@",["?","@"]],["*",["*","+","?","@"]],["+",["+","@","?","*"]]]),er=new Map([["!",new Map([["!","@"]])],["?",new Map([["*","*"],["+","*"]])],["@",new Map([["!","!"],["?","?"],["@","@"],["*","*"],["+","+"]])],["+",new Map([["?","*"],["*","*"]])]]),kn="(?!(?:^|/)\\.\\.?(?:$|/))",ze="(?!\\.)",Tn=new Set(["[","."]),On=new Set(["..","."]),Nn=new Set("().*{}+?[]^$\\!"),Pn=s=>s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g,"\\$&"),Ot="[^/]",tr=Ot+"*?",sr=Ot+"+?",Ln=0,ee=class{type;#s;#r;#i=!1;#e=[];#t;#a;#l;#c=!1;#n;#o;#h=!1;id=++Ln;get depth(){return(this.#t?.depth??-1)+1}[Symbol.for("nodejs.util.inspect.custom")](){return{"@@type":"AST",id:this.id,type:this.type,root:this.#s.id,parent:this.#t?.id,depth:this.depth,partsLength:this.#e.length,parts:this.#e}}constructor(e,t,r={}){this.type=e,e&&(this.#r=!0),this.#t=t,this.#s=this.#t?this.#t.#s:this,this.#n=this.#s===this?r:this.#s.#n,this.#l=this.#s===this?[]:this.#s.#l,e==="!"&&!this.#s.#c&&this.#l.push(this),this.#a=this.#t?this.#t.#e.length:0}get hasMagic(){if(this.#r!==void 0)return this.#r;for(let e of this.#e)if(typeof e!="string"&&(e.type||e.hasMagic))return this.#r=!0;return this.#r}toString(){return this.#o!==void 0?this.#o:this.type?this.#o=this.type+"("+this.#e.map(e=>String(e)).join("|")+")":this.#o=this.#e.map(e=>String(e)).join("")}#y(){if(this!==this.#s)throw new Error("should only call on root");if(this.#c)return this;this.toString(),this.#c=!0;let e;for(;e=this.#l.pop();){if(e.type!=="!")continue;let t=e,r=t.#t;for(;r;){for(let i=t.#a+1;!r.type&&i<r.#e.length;i++)for(let n of e.#e){if(typeof n=="string")throw new Error("string part in extglob AST??");n.copyIn(r.#e[i])}t=r,r=t.#t}}return this}push(...e){for(let t of e)if(t!==""){if(typeof t!="string"&&!(t instanceof N&&t.#t===this))throw new Error("invalid part: "+t);this.#e.push(t)}}toJSON(){let e=this.type===null?this.#e.slice().map(t=>typeof t=="string"?t:t.toJSON()):[this.type,...this.#e.map(t=>t.toJSON())];return this.isStart()&&!this.type&&e.unshift([]),this.isEnd()&&(this===this.#s||this.#s.#c&&this.#t?.type==="!")&&e.push({}),e}isStart(){if(this.#s===this)return!0;if(!this.#t?.isStart())return!1;if(this.#a===0)return!0;let e=this.#t;for(let t=0;t<this.#a;t++){let r=e.#e[t];if(!(r instanceof N&&r.type==="!"))return!1}return!0}isEnd(){if(this.#s===this||this.#t?.type==="!")return!0;if(!this.#t?.isEnd())return!1;if(!this.type)return this.#t?.isEnd();let e=this.#t?this.#t.#e.length:0;return this.#a===e-1}copyIn(e){typeof e=="string"?this.push(e):this.push(e.clone(this))}clone(e){let t=new N(this.type,e);for(let r of this.#e)t.copyIn(r);return t}static#f(e,t,r,i,n){let o=i.maxExtglobRecursion??2,a=!1,h=!1,l=-1,f=!1;if(t.type===null){let d=r,y="";for(;d<e.length;){let w=e.charAt(d++);if(a||w==="\\"){a=!a,y+=w;continue}if(h){d===l+1?(w==="^"||w==="!")&&(f=!0):w==="]"&&!(d===l+2&&f)&&(h=!1),y+=w;continue}else if(w==="["){h=!0,l=d,f=!1,y+=w;continue}if(!i.noext&&Tt(w)&&e.charAt(d)==="("&&n<=o){t.push(y),y="";let P=new N(w,t);d=N.#f(e,P,d,i,n+1),t.push(P);continue}y+=w}return t.push(y),d}let c=r+1,u=new N(null,t),p=[],g="";for(;c<e.length;){let d=e.charAt(c++);if(a||d==="\\"){a=!a,g+=d;continue}if(h){c===l+1?(d==="^"||d==="!")&&(f=!0):d==="]"&&!(c===l+2&&f)&&(h=!1),g+=d;continue}else if(d==="["){h=!0,l=c,f=!1,g+=d;continue}if(!i.noext&&Tt(d)&&e.charAt(c)==="("&&(n<=o||t&&t.#u(d))){let w=t&&t.#u(d)?0:1;u.push(g),g="";let S=new N(d,u);u.push(S),c=N.#f(e,S,c,i,n+w);continue}if(d==="|"){u.push(g),g="",p.push(u),u=new N(null,t);continue}if(d===")")return g===""&&t.#e.length===0&&(t.#h=!0),u.push(g),g="",t.push(...p,u),c;g+=d}return t.type=null,t.#r=void 0,t.#e=[e.substring(r-1)],c}#_(e){return this.#p(e,bn)}#p(e,t=xn){if(!e||typeof e!="object"||e.type!==null||e.#e.length!==1||this.type===null)return!1;let r=e.#e[0];return!r||typeof r!="object"||r.type===null?!1:this.#u(r.type,t)}#u(e,t=Cn){return!!t.get(this.type)?.includes(e)}#w(e,t){let r=e.#e[0],i=new N(null,r,this.options);i.#e.push(""),r.push(i),this.#g(e,t)}#g(e,t){let r=e.#e[0];this.#e.splice(t,1,...r.#e);for(let i of r.#e)typeof i=="object"&&(i.#t=this);this.#o=void 0}#S(e){return!!er.get(this.type)?.has(e)}#v(e){if(!e||typeof e!="object"||e.type!==null||e.#e.length!==1||this.type===null||this.#e.length!==1)return!1;let t=e.#e[0];return!t||typeof t!="object"||t.type===null?!1:this.#S(t.type)}#E(e){let t=er.get(this.type),r=e.#e[0],i=t?.get(r.type);if(!i)return!1;this.#e=r.#e;for(let n of this.#e)typeof n=="object"&&(n.#t=this);this.type=i,this.#o=void 0,this.#h=!1}static fromGlob(e,t={}){let r=new N(null,void 0,t);return N.#f(e,r,0,t,0),r}toMMPattern(){if(this!==this.#s)return this.#s.toMMPattern();let e=this.toString(),[t,r,i,n]=this.toRegExpSource();if(!(i||this.#r||this.#n.nocase&&!this.#n.nocaseMagicOnly&&e.toUpperCase()!==e.toLowerCase()))return r;let a=(this.#n.nocase?"i":"")+(n?"u":"");return Object.assign(new RegExp(`^${t}$`,a),{_src:t,_glob:e})}get options(){return this.#n}toRegExpSource(e){let t=e??!!this.#n.dot;if(this.#s===this&&(this.#d(),this.#y()),!Qs(this)){let h=this.isStart()&&this.isEnd()&&!this.#e.some(p=>typeof p!="string"),l=this.#e.map(p=>{let[g,d,y,w]=typeof p=="string"?N.#x(p,this.#r,h):p.toRegExpSource(e);return this.#r=this.#r||y,this.#i=this.#i||w,g}).join(""),f="";if(this.isStart()&&typeof this.#e[0]=="string"&&!(this.#e.length===1&&On.has(this.#e[0]))){let g=Tn,d=t&&g.has(l.charAt(0))||l.startsWith("\\.")&&g.has(l.charAt(2))||l.startsWith("\\.\\.")&&g.has(l.charAt(4)),y=!t&&!e&&g.has(l.charAt(0));f=d?kn:y?ze:""}let c="";return this.isEnd()&&this.#s.#c&&this.#t?.type==="!"&&(c="(?:$|\\/)"),[f+l+c,H(l),this.#r=!!this.#r,this.#i]}let r=this.type==="*"||this.type==="+",i=this.type==="!"?"(?:(?!(?:":"(?:",n=this.#m(t);if(this.isStart()&&this.isEnd()&&!n&&this.type!=="!"){let h=this.toString(),l=this;return l.#e=[h],l.type=null,l.#r=void 0,[h,H(this.toString()),!1,!1]}let o=!r||e||t||!ze?"":this.#m(!0);o===n&&(o=""),o&&(n=`(?:${n})(?:${o})*?`);let a="";if(this.type==="!"&&this.#h)a=(this.isStart()&&!t?ze:"")+sr;else{let h=this.type==="!"?"))"+(this.isStart()&&!t&&!e?ze:"")+tr+")":this.type==="@"?")":this.type==="?"?")?":this.type==="+"&&o?")":this.type==="*"&&o?")?":`)${this.type}`;a=i+n+h}return[a,H(n),this.#r=!!this.#r,this.#i]}#d(){if(Qs(this)){let e=0,t=!1;do{t=!0;for(let r=0;r<this.#e.length;r++){let i=this.#e[r];typeof i=="object"&&(i.#d(),this.#p(i)?(t=!1,this.#g(i,r)):this.#_(i)?(t=!1,this.#w(i,r)):this.#v(i)&&(t=!1,this.#E(i)))}}while(!t&&++e<10)}else for(let e of this.#e)typeof e=="object"&&e.#d();this.#o=void 0}#m(e){return this.#e.map(t=>{if(typeof t=="string")throw new Error("string type in extglob ast??");let[r,i,n,o]=t.toRegExpSource(e);return this.#i=this.#i||o,r}).filter(t=>!(this.isStart()&&this.isEnd())||!!t).join("|")}static#x(e,t,r=!1){let i=!1,n="",o=!1,a=!1;for(let h=0;h<e.length;h++){let l=e.charAt(h);if(i){i=!1,n+=(Nn.has(l)?"\\":"")+l;continue}if(l==="*"){if(a)continue;a=!0,n+=r&&/^[*]+$/.test(e)?sr:tr,t=!0;continue}else a=!1;if(l==="\\"){h===e.length-1?n+="\\\\":i=!0;continue}if(l==="["){let[f,c,u,p]=Ks(e,h);if(u){n+=f,o=o||c,h+=u-1,t=t||p;continue}}if(l==="?"){n+=Ot,t=!0;continue}n+=Pn(l)}return[n,H(e),!!t,o]}};N=ee;var Nt=(s,{windowsPathsNoEscape:e=!1,magicalBraces:t=!1}={})=>t?e?s.replace(/[?*()[\]{}]/g,"[$&]"):s.replace(/[?*()[\]\\{}]/g,"\\$&"):e?s.replace(/[?*()[\]]/g,"[$&]"):s.replace(/[?*()[\]\\]/g,"\\$&");var b=(s,e,t={})=>(xe(e),!t.nocomment&&e.charAt(0)==="#"?!1:new fe(e,t).match(s)),Rn=/^\*+([^+@!?*[(]*)$/,Dn=s=>e=>!e.startsWith(".")&&e.endsWith(s),Mn=s=>e=>e.endsWith(s),An=s=>(s=s.toLowerCase(),e=>!e.startsWith(".")&&e.toLowerCase().endsWith(s)),Bn=s=>(s=s.toLowerCase(),e=>e.toLowerCase().endsWith(s)),$n=/^\*+\.\*+$/,Fn=s=>!s.startsWith(".")&&s.includes("."),Wn=s=>s!=="."&&s!==".."&&s.includes("."),In=/^\.\*+$/,Un=s=>s!=="."&&s!==".."&&s.startsWith("."),jn=/^\*+$/,Gn=s=>s.length!==0&&!s.startsWith("."),qn=s=>s.length!==0&&s!=="."&&s!=="..",Vn=/^\?+([^+@!?*[(]*)?$/,zn=([s,e=""])=>{let t=nr([s]);return e?(e=e.toLowerCase(),r=>t(r)&&r.toLowerCase().endsWith(e)):t},Hn=([s,e=""])=>{let t=or([s]);return e?(e=e.toLowerCase(),r=>t(r)&&r.toLowerCase().endsWith(e)):t},Yn=([s,e=""])=>{let t=or([s]);return e?r=>t(r)&&r.endsWith(e):t},Jn=([s,e=""])=>{let t=nr([s]);return e?r=>t(r)&&r.endsWith(e):t},nr=([s])=>{let e=s.length;return t=>t.length===e&&!t.startsWith(".")},or=([s])=>{let e=s.length;return t=>t.length===e&&t!=="."&&t!==".."},ar=typeof process=="object"&&process?typeof process.env=="object"&&process.env&&process.env.__MINIMATCH_TESTING_PLATFORM__||process.platform:"posix",rr={win32:{sep:"\\"},posix:{sep:"/"}},Xn=ar==="win32"?rr.win32.sep:rr.posix.sep;b.sep=Xn;var O=Symbol("globstar **");b.GLOBSTAR=O;var Zn="[^/]",Kn=Zn+"*?",Qn="(?:(?!(?:\\/|^)(?:\\.{1,2})($|\\/)).)*?",eo="(?:(?!(?:\\/|^)\\.).)*?",to=(s,e={})=>t=>b(t,s,e);b.filter=to;var B=(s,e={})=>Object.assign({},s,e),so=s=>{if(!s||typeof s!="object"||!Object.keys(s).length)return b;let e=b;return Object.assign((r,i,n={})=>e(r,i,B(s,n)),{Minimatch:class extends e.Minimatch{constructor(i,n={}){super(i,B(s,n))}static defaults(i){return e.defaults(B(s,i)).Minimatch}},AST:class extends e.AST{constructor(i,n,o={}){super(i,n,B(s,o))}static fromGlob(i,n={}){return e.AST.fromGlob(i,B(s,n))}},unescape:(r,i={})=>e.unescape(r,B(s,i)),escape:(r,i={})=>e.escape(r,B(s,i)),filter:(r,i={})=>e.filter(r,B(s,i)),defaults:r=>e.defaults(B(s,r)),makeRe:(r,i={})=>e.makeRe(r,B(s,i)),braceExpand:(r,i={})=>e.braceExpand(r,B(s,i)),match:(r,i,n={})=>e.match(r,i,B(s,n)),sep:e.sep,GLOBSTAR:O})};b.defaults=so;var cr=(s,e={})=>(xe(s),e.nobrace||!/\{(?:(?!\{).)*\}/.test(s)?[s]:Xs(s,{max:e.braceExpandMax}));b.braceExpand=cr;var ro=(s,e={})=>new fe(s,e).makeRe();b.makeRe=ro;var io=(s,e,t={})=>{let r=new fe(e,t);return s=s.filter(i=>r.match(i)),r.options.nonull&&!s.length&&s.push(e),s};b.match=io;var ir=/[?*]|[+@!]\(.*?\)|\[|\]/,no=s=>s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g,"\\$&"),fe=class{options;set;pattern;windowsPathsNoEscape;nonegate;negate;comment;empty;preserveMultipleSlashes;partial;globSet;globParts;nocase;isWindows;platform;windowsNoMagicRoot;maxGlobstarRecursion;regexp;constructor(e,t={}){xe(e),t=t||{},this.options=t,this.maxGlobstarRecursion=t.maxGlobstarRecursion??200,this.pattern=e,this.platform=t.platform||ar,this.isWindows=this.platform==="win32";let r="allowWindowsEscape";this.windowsPathsNoEscape=!!t.windowsPathsNoEscape||t[r]===!1,this.windowsPathsNoEscape&&(this.pattern=this.pattern.replace(/\\/g,"/")),this.preserveMultipleSlashes=!!t.preserveMultipleSlashes,this.regexp=null,this.negate=!1,this.nonegate=!!t.nonegate,this.comment=!1,this.empty=!1,this.partial=!!t.partial,this.nocase=!!this.options.nocase,this.windowsNoMagicRoot=t.windowsNoMagicRoot!==void 0?t.windowsNoMagicRoot:!!(this.isWindows&&this.nocase),this.globSet=[],this.globParts=[],this.set=[],this.make()}hasMagic(){if(this.options.magicalBraces&&this.set.length>1)return!0;for(let e of this.set)for(let t of e)if(typeof t!="string")return!0;return!1}debug(...e){}make(){let e=this.pattern,t=this.options;if(!t.nocomment&&e.charAt(0)==="#"){this.comment=!0;return}if(!e){this.empty=!0;return}this.parseNegate(),this.globSet=[...new Set(this.braceExpand())],t.debug&&(this.debug=(...n)=>console.error(...n)),this.debug(this.pattern,this.globSet);let r=this.globSet.map(n=>this.slashSplit(n));this.globParts=this.preprocess(r),this.debug(this.pattern,this.globParts);let i=this.globParts.map((n,o,a)=>{if(this.isWindows&&this.windowsNoMagicRoot){let h=n[0]===""&&n[1]===""&&(n[2]==="?"||!ir.test(n[2]))&&!ir.test(n[3]),l=/^[a-z]:/i.test(n[0]);if(h)return[...n.slice(0,4),...n.slice(4).map(f=>this.parse(f))];if(l)return[n[0],...n.slice(1).map(f=>this.parse(f))]}return n.map(h=>this.parse(h))});if(this.debug(this.pattern,i),this.set=i.filter(n=>n.indexOf(!1)===-1),this.isWindows)for(let n=0;n<this.set.length;n++){let o=this.set[n];o[0]===""&&o[1]===""&&this.globParts[n][2]==="?"&&typeof o[3]=="string"&&/^[a-z]:$/i.test(o[3])&&(o[2]="?")}this.debug(this.pattern,this.set)}preprocess(e){if(this.options.noglobstar)for(let r of e)for(let i=0;i<r.length;i++)r[i]==="**"&&(r[i]="*");let{optimizationLevel:t=1}=this.options;return t>=2?(e=this.firstPhasePreProcess(e),e=this.secondPhasePreProcess(e)):t>=1?e=this.levelOneOptimize(e):e=this.adjascentGlobstarOptimize(e),e}adjascentGlobstarOptimize(e){return e.map(t=>{let r=-1;for(;(r=t.indexOf("**",r+1))!==-1;){let i=r;for(;t[i+1]==="**";)i++;i!==r&&t.splice(r,i-r)}return t})}levelOneOptimize(e){return e.map(t=>(t=t.reduce((r,i)=>{let n=r[r.length-1];return i==="**"&&n==="**"?r:i===".."&&n&&n!==".."&&n!=="."&&n!=="**"?(r.pop(),r):(r.push(i),r)},[]),t.length===0?[""]:t))}levelTwoFileOptimize(e){Array.isArray(e)||(e=this.slashSplit(e));let t=!1;do{if(t=!1,!this.preserveMultipleSlashes){for(let i=1;i<e.length-1;i++){let n=e[i];i===1&&n===""&&e[0]===""||(n==="."||n==="")&&(t=!0,e.splice(i,1),i--)}e[0]==="."&&e.length===2&&(e[1]==="."||e[1]==="")&&(t=!0,e.pop())}let r=0;for(;(r=e.indexOf("..",r+1))!==-1;){let i=e[r-1];i&&i!=="."&&i!==".."&&i!=="**"&&!(this.isWindows&&/^[a-z]:$/i.test(i))&&(t=!0,e.splice(r-1,2),r-=2)}}while(t);return e.length===0?[""]:e}firstPhasePreProcess(e){let t=!1;do{t=!1;for(let r of e){let i=-1;for(;(i=r.indexOf("**",i+1))!==-1;){let o=i;for(;r[o+1]==="**";)o++;o>i&&r.splice(i+1,o-i);let a=r[i+1],h=r[i+2],l=r[i+3];if(a!==".."||!h||h==="."||h===".."||!l||l==="."||l==="..")continue;t=!0,r.splice(i,1);let f=r.slice(0);f[i]="**",e.push(f),i--}if(!this.preserveMultipleSlashes){for(let o=1;o<r.length-1;o++){let a=r[o];o===1&&a===""&&r[0]===""||(a==="."||a==="")&&(t=!0,r.splice(o,1),o--)}r[0]==="."&&r.length===2&&(r[1]==="."||r[1]==="")&&(t=!0,r.pop())}let n=0;for(;(n=r.indexOf("..",n+1))!==-1;){let o=r[n-1];if(o&&o!=="."&&o!==".."&&o!=="**"){t=!0;let h=n===1&&r[n+1]==="**"?["."]:[];r.splice(n-1,2,...h),r.length===0&&r.push(""),n-=2}}}}while(t);return e}secondPhasePreProcess(e){for(let t=0;t<e.length-1;t++)for(let r=t+1;r<e.length;r++){let i=this.partsMatch(e[t],e[r],!this.preserveMultipleSlashes);if(i){e[t]=[],e[r]=i;break}}return e.filter(t=>t.length)}partsMatch(e,t,r=!1){let i=0,n=0,o=[],a="";for(;i<e.length&&n<t.length;)if(e[i]===t[n])o.push(a==="b"?t[n]:e[i]),i++,n++;else if(r&&e[i]==="**"&&t[n]===e[i+1])o.push(e[i]),i++;else if(r&&t[n]==="**"&&e[i]===t[n+1])o.push(t[n]),n++;else if(e[i]==="*"&&t[n]&&(this.options.dot||!t[n].startsWith("."))&&t[n]!=="**"){if(a==="b")return!1;a="a",o.push(e[i]),i++,n++}else if(t[n]==="*"&&e[i]&&(this.options.dot||!e[i].startsWith("."))&&e[i]!=="**"){if(a==="a")return!1;a="b",o.push(t[n]),i++,n++}else return!1;return e.length===t.length&&o}parseNegate(){if(this.nonegate)return;let e=this.pattern,t=!1,r=0;for(let i=0;i<e.length&&e.charAt(i)==="!";i++)t=!t,r++;r&&(this.pattern=e.slice(r)),this.negate=t}matchOne(e,t,r=!1){let i=0,n=0;if(this.isWindows){let a=typeof e[0]=="string"&&/^[a-z]:$/i.test(e[0]),h=!a&&e[0]===""&&e[1]===""&&e[2]==="?"&&/^[a-z]:$/i.test(e[3]),l=typeof t[0]=="string"&&/^[a-z]:$/i.test(t[0]),f=!l&&t[0]===""&&t[1]===""&&t[2]==="?"&&typeof t[3]=="string"&&/^[a-z]:$/i.test(t[3]),c=h?3:a?0:void 0,u=f?3:l?0:void 0;if(typeof c=="number"&&typeof u=="number"){let[p,g]=[e[c],t[u]];p.toLowerCase()===g.toLowerCase()&&(t[u]=p,n=u,i=c)}}let{optimizationLevel:o=1}=this.options;return o>=2&&(e=this.levelTwoFileOptimize(e)),t.includes(O)?this.#s(e,t,r,i,n):this.#i(e,t,r,i,n)}#s(e,t,r,i,n){let o=t.indexOf(O,n),a=t.lastIndexOf(O),[h,l,f]=r?[t.slice(n,o),t.slice(o+1),[]]:[t.slice(n,o),t.slice(o+1,a),t.slice(a+1)];if(h.length){let S=e.slice(i,i+h.length);if(!this.#i(S,h,r,0,0))return!1;i+=h.length,n+=h.length}let c=0;if(f.length){if(f.length+i>e.length)return!1;let S=e.length-f.length;if(this.#i(e,f,r,S,0))c=f.length;else{if(e[e.length-1]!==""||i+f.length===e.length||(S--,!this.#i(e,f,r,S,0)))return!1;c=f.length+1}}if(!l.length){let S=!!c;for(let P=i;P<e.length-c;P++){let C=String(e[P]);if(S=!0,C==="."||C===".."||!this.options.dot&&C.startsWith("."))return!1}return r||S}let u=[[[],0]],p=u[0],g=0,d=[0];for(let S of l)S===O?(d.push(g),p=[[],0],u.push(p)):(p[0].push(S),g++);let y=u.length-1,w=e.length-c;for(let S of u)S[1]=w-(d[y--]+S[0].length);return!!this.#r(e,u,i,0,r,0,!!c)}#r(e,t,r,i,n,o,a){let h=t[i];if(!h){for(let c=r;c<e.length;c++){a=!0;let u=e[c];if(u==="."||u===".."||!this.options.dot&&u.startsWith("."))return!1}return a}let[l,f]=h;for(;r<=f;){if(this.#i(e.slice(0,r+l.length),l,n,r,0)&&o<this.maxGlobstarRecursion){let p=this.#r(e,t,r+l.length,i+1,n,o+1,a);if(p!==!1)return p}let u=e[r];if(u==="."||u===".."||!this.options.dot&&u.startsWith("."))return!1;r++}return n||null}#i(e,t,r,i,n){let o,a,h,l;for(o=i,a=n,l=e.length,h=t.length;o<l&&a<h;o++,a++){this.debug("matchOne loop");let f=t[a],c=e[o];if(this.debug(t,f,c),f===!1||f===O)return!1;let u;if(typeof f=="string"?(u=c===f,this.debug("string match",f,c,u)):(u=f.test(c),this.debug("pattern match",f,c,u)),!u)return!1}if(o===l&&a===h)return!0;if(o===l)return r;if(a===h)return o===l-1&&e[o]==="";throw new Error("wtf?")}braceExpand(){return cr(this.pattern,this.options)}parse(e){xe(e);let t=this.options;if(e==="**")return O;if(e==="")return"";let r,i=null;(r=e.match(jn))?i=t.dot?qn:Gn:(r=e.match(Rn))?i=(t.nocase?t.dot?Bn:An:t.dot?Mn:Dn)(r[1]):(r=e.match(Vn))?i=(t.nocase?t.dot?Hn:zn:t.dot?Yn:Jn)(r):(r=e.match($n))?i=t.dot?Wn:Fn:(r=e.match(In))&&(i=Un);let n=ee.fromGlob(e,this.options).toMMPattern();return i&&typeof n=="object"&&Reflect.defineProperty(n,"test",{value:i}),n}makeRe(){if(this.regexp||this.regexp===!1)return this.regexp;let e=this.set;if(!e.length)return this.regexp=!1,this.regexp;let t=this.options,r=t.noglobstar?Kn:t.dot?Qn:eo,i=new Set(t.nocase?["i"]:[]),n=e.map(h=>{let l=h.map(c=>{if(c instanceof RegExp)for(let u of c.flags.split(""))i.add(u);return typeof c=="string"?no(c):c===O?O:c._src});l.forEach((c,u)=>{let p=l[u+1],g=l[u-1];c!==O||g===O||(g===void 0?p!==void 0&&p!==O?l[u+1]="(?:\\/|"+r+"\\/)?"+p:l[u]=r:p===void 0?l[u-1]=g+"(?:\\/|\\/"+r+")?":p!==O&&(l[u-1]=g+"(?:\\/|\\/"+r+"\\/)"+p,l[u+1]=O))});let f=l.filter(c=>c!==O);if(this.partial&&f.length>=1){let c=[];for(let u=1;u<=f.length;u++)c.push(f.slice(0,u).join("/"));return"(?:"+c.join("|")+")"}return f.join("/")}).join("|"),[o,a]=e.length>1?["(?:",")"]:["",""];n="^"+o+n+a+"$",this.partial&&(n="^(?:\\/|"+o+n.slice(1,-1)+a+")$"),this.negate&&(n="^(?!"+n+").+$");try{this.regexp=new RegExp(n,[...i].join(""))}catch{this.regexp=!1}return this.regexp}slashSplit(e){return this.preserveMultipleSlashes?e.split("/"):this.isWindows&&/^\/\/[^/]+/.test(e)?["",...e.split(/\/+/)]:e.split(/\/+/)}match(e,t=this.partial){if(this.debug("match",e,this.pattern),this.comment)return!1;if(this.empty)return e==="";if(e==="/"&&t)return!0;let r=this.options;this.isWindows&&(e=e.split("\\").join("/"));let i=this.slashSplit(e);this.debug(this.pattern,"split",i);let n=this.set;this.debug(this.pattern,"set",n);let o=i[i.length-1];if(!o)for(let a=i.length-2;!o&&a>=0;a--)o=i[a];for(let a of n){let h=i;if(r.matchBase&&a.length===1&&(h=[o]),this.matchOne(h,a,t))return r.flipNegate?!0:!this.negate}return r.flipNegate?!1:this.negate}static defaults(e){return b.defaults(e).Minimatch}};b.AST=ee;b.Minimatch=fe;b.escape=Nt;b.unescape=H;var Ye=T(require("path")),lr=T(require("vscode")),He=class{constructor(e){this.config=e}config;mapToRemote(e){let t=lr.workspace.workspaceFolders?.[0];if(!t)throw new Error(`File ${e.fsPath} is not in a workspace folder`);let r=Ye.relative(t.uri.fsPath,e.fsPath).replace(/\\/g,"/");if(r===".."||r.startsWith("../")||Ye.isAbsolute(r))throw new Error(`File ${e.fsPath} is not in the primary workspace folder (${t.uri.fsPath})`);let i=this.config.syncDirectory,n=r;if(i){if(r!==i&&!r.startsWith(i+"/"))throw new Error(`File ${e.fsPath} is outside the sync directory '${i}'`);n=r.slice(i.length)}return n.startsWith("/")||(n="/"+n),this.validate(n),n}validate(e){Pt(e)}};function Pt(s){if(!s)throw new Error("Empty remote path");if(/[\x00-\x1f\x7f-\x9f]/.test(s))throw new Error(`Control character in remote path: ${JSON.stringify(s)}`);if(/[*?\[\]]/.test(s))throw new Error(`Invalid characters in path: ${s}`);if(s.split("/").some(e=>e===".."))throw new Error(`Path traversal not allowed: ${s}`);if(s.includes("\\"))throw new Error(`Backslash not allowed in remote path: ${s}`);if(s.includes("//"))throw new Error(`Double slashes not allowed: ${s}`);if(s.includes(":"))throw new Error(`Colon not allowed in remote path: ${s}`)}var oo=["**/NetscriptDefinitions.d.ts",".git/**",".gitignore",".vscode/**","node_modules/**"],ue=1024*1024,hr=8*1024*1024,fr=5e3,Je=class{constructor(e,t,r){this.api=e;this.config=t;this.pathMapper=new He(t),this.outputChannel=r}api;config;pathMapper;debounceTimers=new Map;outputChannel;async pushFile(e){if(this.config.fileExtensions.length===0){m.window.showWarningMessage("bitburnerSync.fileExtensions is set to []. Nothing will be synced. Remove the setting to fall back to the defaults.");return}if(this.isExcluded(e)){this.log(`Excluded from sync: ${e.fsPath}`);return}let t=-1;try{t=(await m.workspace.fs.stat(e)).size}catch{}if(t>ue)throw new Error(`File exceeds the ${Y(ue)} sync limit: ${e.fsPath} (${Y(t)})`);let r=this.pathMapper.mapToRemote(e),i=await m.workspace.fs.readFile(e);if(i.byteLength>ue)throw new Error(`File exceeds the ${Y(ue)} sync limit: ${e.fsPath} (${Y(i.byteLength)})`);let n=Buffer.from(i).toString("utf8");await this.api.pushFile(r,n,this.config.targetServer),this.log(`Pushed: ${r}`),this.config.showNotifications&&m.window.showInformationMessage(`Synced: ${r}`)}async syncAll(){if(this.config.fileExtensions.length===0){m.window.showWarningMessage("bitburnerSync.fileExtensions is set to []. Nothing will be synced. Remove the setting to fall back to the defaults.");return}let e=m.workspace.workspaceFolders?.[0];if(!e){m.window.showWarningMessage("No workspace folder open.");return}let t=new m.RelativePattern(e,this.config.fileGlob),r=this.findFilesExcludeGlob(),i=r?new m.RelativePattern(e,r):null,n=await m.workspace.findFiles(t,i);if(n.length===0){m.window.showWarningMessage("No matching files found to sync.");return}let o=0,a=0,h=0;for(let c of n){if(this.isExcluded(c)){h++,this.log(`Excluded from sync: ${c.fsPath}`);continue}try{await this.pushFile(c),o++}catch(u){a++,this.log(`Failed to push ${c.fsPath}: ${u}`)}}let l=h>0?`, ${h} excluded`:"",f=`Sync complete: ${o} pushed, ${a} failed${l}`;this.log(f),this.config.showNotifications&&m.window.showInformationMessage(f)}handleFileChange(e){if(!this.config.autoSync||this.isExcluded(e))return;let t=e.toString(),r=this.debounceTimers.get(t);r&&clearTimeout(r);let i=setTimeout(async()=>{if(this.debounceTimers.delete(t),!await this.fileExists(e)){this.log(`Auto-sync skipped (file no longer exists): ${e.fsPath}`);return}try{await this.pushFile(e)}catch(n){this.log(`Auto-sync failed for ${e.fsPath}: ${n}`)}},300);this.debounceTimers.set(t,i)}async downloadAll(){if(this.config.fileExtensions.length===0){m.window.showWarningMessage("bitburnerSync.fileExtensions is set to []. Nothing will be downloaded. Remove the setting to fall back to the defaults.");return}let e=await this.buildDownloadPlan();if(e===null)return;let{entries:t,skipped:r}=e,i=!0,n=t.filter(c=>c.existing).map(c=>c.remote);n.length>0&&(i=await this.confirmOverwrite(n),i||this.log(`Overwrite declined: ${n.length} existing local file${n.length===1?"":"s"} kept; new files will still be downloaded`));let o=t.filter(c=>i||!c.existing);if(o.length===0&&r===0){m.window.showWarningMessage("Nothing to download.");return}let a=0,h=0;for(let{remote:c,destUri:u}of o)try{let p=await this.api.getFile(c,this.config.targetServer),g=Buffer.byteLength(p,"utf8");if(g>ue)throw new Error(`File exceeds the ${Y(ue)} sync limit (${Y(g)})`);await m.workspace.fs.writeFile(u,Buffer.from(p)),a++,this.log(`Downloaded: ${c}`)}catch(p){h++,this.log(`Failed to download ${c}: ${p}`)}let l=r>0?`, ${r} skipped`:"",f=`Download complete: ${a} downloaded, ${h} failed${l}`;this.log(f),this.config.showNotifications&&m.window.showInformationMessage(f)}async countNewRemoteFiles(){if(this.config.fileExtensions.length===0)return 0;let e=await this.buildDownloadPlan({silent:!0});return e===null?0:e.entries.filter(t=>!t.existing).length}async buildDownloadPlan(e={}){let t=!!e.silent,r=m.workspace.workspaceFolders;if(!r||r.length===0){if(t)return null;throw new Error("No workspace folder open")}let i=r[0].uri,n=this.config.syncDirectory,o=n?m.Uri.joinPath(i,n):i,a=await this.api.getFileNames(this.config.targetServer);if(a.length===0)return t||m.window.showWarningMessage("No files found on Bitburner server."),null;if(a.length>fr){if(!t){let c=`Refusing to download: server returned ${a.length} filenames (limit is ${fr}). This usually indicates a corrupt save or a buggy server. Narrow bitburnerSync.fileExtensions or contact the server admin.`;this.log(c),m.window.showErrorMessage(c)}return null}let h=this.config.fileExtensions,l=[],f=0;for(let c of a){try{Pt(c)}catch(g){f++,t||this.log(`Skipped (invalid name from server): ${JSON.stringify(c)} \u2014 ${g instanceof Error?g.message:g}`);continue}if(!ao(c,h)){f++,t||this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${c}`);continue}let u=c.startsWith("/")?c.slice(1):c,p=m.Uri.joinPath(o,u);l.push({remote:c,destUri:p,existing:await this.fileExists(p)})}return{entries:l,skipped:f}}async fileExists(e){try{return await m.workspace.fs.stat(e),!0}catch{return!1}}allExcludePatterns(){return[...oo,...this.config.exclude]}isExcluded(e){let t=m.workspace.workspaceFolders?.[0];if(!t)return!1;let r=Xe.relative(t.uri.fsPath,e.fsPath).replace(/\\/g,"/");return!r||r.startsWith("..")||Xe.isAbsolute(r)?!1:this.allExcludePatterns().some(i=>b(r,i,{dot:!0}))}findFilesExcludeGlob(){let e=this.allExcludePatterns();return e.length===0?null:e.length===1?e[0]:`{${e.join(",")}}`}async confirmOverwrite(e){let r=e.slice(0,20),i=e.length-r.length,n=r.join(`
-`),o=i>0?`
-\u2026and ${i} more`:"",a=e.length,h=a===1?"file":"files";return await m.window.showWarningMessage(`Overwrite ${a} local ${h}?`,{modal:!0,detail:`Downloading from Bitburner will replace the following ${h}:
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-${n}${o}
+// node_modules/ws/lib/constants.js
+var require_constants = __commonJS({
+  "node_modules/ws/lib/constants.js"(exports2, module2) {
+    "use strict";
+    var BINARY_TYPES = ["nodebuffer", "arraybuffer", "fragments"];
+    var hasBlob = typeof Blob !== "undefined";
+    if (hasBlob) BINARY_TYPES.push("blob");
+    module2.exports = {
+      BINARY_TYPES,
+      CLOSE_TIMEOUT: 3e4,
+      EMPTY_BUFFER: Buffer.alloc(0),
+      GUID: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
+      hasBlob,
+      kForOnEventAttribute: /* @__PURE__ */ Symbol("kIsForOnEventAttribute"),
+      kListener: /* @__PURE__ */ Symbol("kListener"),
+      kStatusCode: /* @__PURE__ */ Symbol("status-code"),
+      kWebSocket: /* @__PURE__ */ Symbol("websocket"),
+      NOOP: () => {
+      }
+    };
+  }
+});
 
-New files (not yet present locally) will be downloaded either way.`},"Overwrite")==="Overwrite"}async downloadDefinitions(){let e=await this.api.getDefinitionFile(),t=Buffer.byteLength(e,"utf8");if(t>hr)throw new Error(`NetscriptDefinitions.d.ts exceeds the ${Y(hr)} sanity limit (${Y(t)})`);let r=m.workspace.workspaceFolders;if(!r||r.length===0)throw new Error("No workspace folder open");let i=r[0].uri,n=m.Uri.joinPath(i,"NetscriptDefinitions.d.ts");await m.workspace.fs.writeFile(n,Buffer.from(e)),this.log("Downloaded NetscriptDefinitions.d.ts"),m.window.showInformationMessage("Downloaded NetscriptDefinitions.d.ts to workspace root."),await this.ensureTsConfig(i)}async ensureTsConfig(e){let t=m.Uri.joinPath(e,"tsconfig.json"),r="NetscriptDefinitions.d.ts",i;try{let a=await m.workspace.fs.readFile(t);i=Buffer.from(a).toString("utf8")}catch{let a={compilerOptions:{target:"ES2022",module:"ES2022",moduleResolution:"node",allowJs:!0,checkJs:!0,noEmit:!0},include:["**/*"],files:[r]};await m.workspace.fs.writeFile(t,Buffer.from(JSON.stringify(a,null,2)+`
-`)),this.log("Created tsconfig.json");return}let n;try{n=JSON.parse(i)}catch{}if(n){let a=n.files;if(!Array.isArray(a))a=[r],n.files=a;else if(!a.includes(r))a.push(r);else return;await m.workspace.fs.writeFile(t,Buffer.from(JSON.stringify(n,null,2)+`
-`)),this.log("Updated tsconfig.json with NetscriptDefinitions.d.ts");return}let o;try{o=JSON.parse(co(i))}catch{}if(o){let a=o.files;if(Array.isArray(a)&&a.includes(r))return}await this.warnManualTsConfigSetup(t,r,o===void 0)}async warnManualTsConfigSetup(e,t,r){let n=`${r?"tsconfig.json could not be parsed":"tsconfig.json appears to contain comments or trailing commas (JSONC), which the extension will not rewrite"}. Add "${t}" to the "files" array manually to enable type hints.`;this.log(`WARN: ${n}`),this.log("Suggested tsconfig.json entry:"),this.log(`    "files": ["${t}"]`),this.log("See the Troubleshooting section of the README for a full example.");let o="Open tsconfig.json",a="Show Instructions",h=await m.window.showWarningMessage(n,o,a);h===o?await m.commands.executeCommand("vscode.open",e):h===a&&this.outputChannel.show()}dispose(){for(let e of this.debounceTimers.values())clearTimeout(e);this.debounceTimers.clear()}log(e){let t=new Date().toLocaleTimeString();this.outputChannel.appendLine(`[${t}] ${e}`)}};function Y(s){return s<0?"unknown size":s<1024?`${s} B`:s<1024*1024?`${(s/1024).toFixed(1)} KB`:`${(s/(1024*1024)).toFixed(1)} MB`}function ao(s,e){let t=s.lastIndexOf(".");return t<0?!1:e.includes(s.slice(t).toLowerCase())}function co(s){let e="",t=0,r=!1,i="";for(;t<s.length;){let n=s[t],o=t+1<s.length?s[t+1]:"";if(r){if(n==="\\"&&t+1<s.length){e+=n+o,t+=2;continue}n===i&&(r=!1),e+=n,t++}else if(n==='"'||n==="'")r=!0,i=n,e+=n,t++;else if(n==="/"&&o==="/")for(;t<s.length&&s[t]!==`
-`;)t++;else if(n==="/"&&o==="*"){for(t+=2;t+1<s.length&&!(s[t]==="*"&&s[t+1]==="/");)t++;t+=2}else if(n===","){let a=t+1;for(;a<s.length&&(s[a]===" "||s[a]==="	"||s[a]===`
-`||s[a]==="\r");)a++;a<s.length&&(s[a]==="}"||s[a]==="]")||(e+=n),t++}else e+=n,t++}return e}var te=T(require("vscode")),Ze=class{constructor(e,t){this.syncEngine=e;this.config=t}syncEngine;config;fileWatcher=null;disposables=[];start(){if(this.stop(),this.config.fileExtensions.length===0)return;let e=te.workspace.workspaceFolders?.[0];if(!e)return;let t=new te.RelativePattern(e,this.config.fileGlob);this.fileWatcher=te.workspace.createFileSystemWatcher(t),this.fileWatcher.onDidChange(i=>{this.syncEngine.handleFileChange(i)},null,this.disposables),this.fileWatcher.onDidCreate(i=>{this.syncEngine.handleFileChange(i)},null,this.disposables);let r=te.workspace.onDidSaveTextDocument(i=>{this.matchesExtensions(i.uri)&&this.isInSyncDirectory(i.uri)&&this.syncEngine.handleFileChange(i.uri)});this.disposables.push(r)}isInSyncDirectory(e){let t=te.workspace.workspaceFolders?.[0];if(!t)return!1;let r=e.fsPath.replace(/\\/g,"/"),i=t.uri.fsPath.replace(/\\/g,"/"),n=this.config.syncDirectory,o=n?`${i}/${n}/`:`${i}/`;return r.startsWith(o)}stop(){this.fileWatcher&&(this.fileWatcher.dispose(),this.fileWatcher=null),this.disposables.forEach(e=>e.dispose()),this.disposables.length=0}matchesExtensions(e){let t=e.fsPath.lastIndexOf(".");if(t<0)return!1;let r=e.fsPath.slice(t).toLowerCase();return this.config.fileExtensions.includes(r)}dispose(){this.stop()}};var de=T(require("vscode")),lo={stopped:{text:"$(debug-stop) Bitburner: Off",tooltip:"Click to start sync server"},waiting:{text:"$(watch) Bitburner: Waiting",tooltip:"Server running, waiting for Bitburner to connect"},connected:{text:"$(check) Bitburner: Connected",tooltip:"Connected to Bitburner"},error:{text:"$(error) Bitburner: Error",tooltip:"Server error - click to retry",color:new de.ThemeColor("statusBarItem.errorBackground")}},Ke=class{item;constructor(){this.item=de.window.createStatusBarItem(de.StatusBarAlignment.Left,100),this.item.command="bitburnerSync.toggleServer",this.update("stopped"),this.item.show()}update(e){let t=lo[e];this.item.text=t.text,this.item.tooltip=t.tooltip,this.item.backgroundColor=t.color}dispose(){this.item.dispose()}};var E,Lt,ur,W,I,et,Rt,D,dr="bitburnerSync.hasOpenedConfigOnFirstInstall",pr="bitburnerSync.hasConnectedBefore";async function Ce(){if(E.state!=="stopped"&&E.state!=="error"){_.window.showInformationMessage("Sync server is already running.");return}try{await E.start(W.port),et.start(),_.window.showInformationMessage("In-game under Options->Remote API, enter that port and hit Connect."),_.window.showInformationMessage(`Bitburner sync server started on port ${W.port}.`)}catch(s){_.window.showErrorMessage(`Failed to start server: ${s}`)}}async function Dt(){et.stop(),await E.stop(),_.window.showInformationMessage("Bitburner sync server stopped.")}async function Qe(){E.state==="stopped"&&await Ce()}function ho(s){D=_.window.createOutputChannel("Bitburner Sync"),W=new Ve,go(D),gr(D,W),E=new je,Lt=new Ge(E),ur=new qe(Lt,W.targetServer),I=new Je(ur,W,D),et=new Ze(I,W),Rt=new Ke,E.on("stateChanged",e=>{Rt.update(e)}),E.on("error",e=>{D.appendLine(`WebSocket server error: ${e instanceof Error?e.message:e}`)}),E.on("connected",async()=>{if(D.appendLine("Bitburner connected."),W.autoDownloadDefinitions)try{await I.downloadDefinitions()}catch(e){D.appendLine(`Auto-download definitions failed: ${e}`)}await uo(s)}),E.on("disconnected",()=>{D.appendLine("Bitburner disconnected.")}),s.subscriptions.push(_.commands.registerCommand("bitburnerSync.startServer",Ce),_.commands.registerCommand("bitburnerSync.stopServer",Dt),_.commands.registerCommand("bitburnerSync.toggleServer",()=>E.state==="stopped"||E.state==="error"?Ce():Dt()),_.commands.registerCommand("bitburnerSync.syncFile",async()=>{let e=_.window.activeTextEditor;if(!e){_.window.showWarningMessage("No active file to sync.");return}if(await Qe(),!E.isConnected){_.window.showWarningMessage("Not connected to Bitburner.");return}try{await I.pushFile(e.document.uri)}catch(t){_.window.showErrorMessage(`Sync failed: ${t}`)}}),_.commands.registerCommand("bitburnerSync.syncAll",async()=>{if(await Qe(),!E.isConnected){_.window.showWarningMessage("Not connected to Bitburner.");return}try{await I.syncAll()}catch(e){_.window.showErrorMessage(`Sync all failed: ${e}`)}}),_.commands.registerCommand("bitburnerSync.getDefinitions",async()=>{if(await Qe(),!E.isConnected){_.window.showWarningMessage("Not connected to Bitburner.");return}try{await I.downloadDefinitions()}catch(e){_.window.showErrorMessage(`Failed to download definitions: ${e}`)}}),_.commands.registerCommand("bitburnerSync.downloadAll",async()=>{if(await Qe(),!E.isConnected){_.window.showWarningMessage("Not connected to Bitburner.");return}try{await I.downloadAll()}catch(e){_.window.showErrorMessage(`Failed to download files: ${e}`)}}),D,Rt,{dispose:()=>I.dispose()},{dispose:()=>et.dispose()},{dispose:()=>Lt.dispose()},{dispose:()=>E.stop()}),s.subscriptions.push(_.workspace.onDidChangeConfiguration(async e=>{e.affectsConfiguration("bitburnerSync")&&(e.affectsConfiguration("bitburnerSync.syncDirectory")&&gr(D,W),E.state!=="stopped"&&(D.appendLine("Configuration changed, restarting sync server..."),await Dt(),await Ce()))})),W.autoStart&&Ce(),fo(s)}async function fo(s){if(!s.globalState.get(dr,!1)){await s.globalState.update(dr,!0);try{await _.commands.executeCommand("workbench.action.openSettings","@ext:bitburner-file-sync-plugin")}catch(e){D.appendLine(`Could not open settings UI: ${e}`)}}}async function uo(s){if(!s.workspaceState.get(pr,!1)){await s.workspaceState.update(pr,!0);try{let e=await I.countNewRemoteFiles();if(e<=0)return;let t=e===1?"script":"scripts";await _.window.showInformationMessage(`Bitburner has ${e} ${t} not in this workspace. Download them now?`,"Download","Not now")==="Download"&&await I.downloadAll()}catch(e){D.appendLine(`First-connect download prompt failed: ${e}`)}}}function po(){}function go(s){let e=_.workspace.workspaceFolders;if(!e||e.length<=1)return;let t=e[0],r=`Bitburner Sync: multi-root workspace detected (${e.length} folders). Only "${t.name}" (${t.uri.fsPath}) will be synced; files in other folders are ignored.`;s.appendLine(r),_.window.showWarningMessage(r)}function gr(s,e){let t=e.syncDirectoryError();t&&(s.appendLine(t),_.window.showWarningMessage(t))}0&&(module.exports={activate,deactivate});
+// node_modules/ws/lib/buffer-util.js
+var require_buffer_util = __commonJS({
+  "node_modules/ws/lib/buffer-util.js"(exports2, module2) {
+    "use strict";
+    var { EMPTY_BUFFER } = require_constants();
+    var FastBuffer = Buffer[Symbol.species];
+    function concat(list, totalLength) {
+      if (list.length === 0) return EMPTY_BUFFER;
+      if (list.length === 1) return list[0];
+      const target = Buffer.allocUnsafe(totalLength);
+      let offset = 0;
+      for (let i = 0; i < list.length; i++) {
+        const buf = list[i];
+        target.set(buf, offset);
+        offset += buf.length;
+      }
+      if (offset < totalLength) {
+        return new FastBuffer(target.buffer, target.byteOffset, offset);
+      }
+      return target;
+    }
+    function _mask(source, mask, output, offset, length) {
+      for (let i = 0; i < length; i++) {
+        output[offset + i] = source[i] ^ mask[i & 3];
+      }
+    }
+    function _unmask(buffer, mask) {
+      for (let i = 0; i < buffer.length; i++) {
+        buffer[i] ^= mask[i & 3];
+      }
+    }
+    function toArrayBuffer(buf) {
+      if (buf.length === buf.buffer.byteLength) {
+        return buf.buffer;
+      }
+      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length);
+    }
+    function toBuffer(data) {
+      toBuffer.readOnly = true;
+      if (Buffer.isBuffer(data)) return data;
+      let buf;
+      if (data instanceof ArrayBuffer) {
+        buf = new FastBuffer(data);
+      } else if (ArrayBuffer.isView(data)) {
+        buf = new FastBuffer(data.buffer, data.byteOffset, data.byteLength);
+      } else {
+        buf = Buffer.from(data);
+        toBuffer.readOnly = false;
+      }
+      return buf;
+    }
+    module2.exports = {
+      concat,
+      mask: _mask,
+      toArrayBuffer,
+      toBuffer,
+      unmask: _unmask
+    };
+    if (!process.env.WS_NO_BUFFER_UTIL) {
+      try {
+        const bufferUtil = require("bufferutil");
+        module2.exports.mask = function(source, mask, output, offset, length) {
+          if (length < 48) _mask(source, mask, output, offset, length);
+          else bufferUtil.mask(source, mask, output, offset, length);
+        };
+        module2.exports.unmask = function(buffer, mask) {
+          if (buffer.length < 32) _unmask(buffer, mask);
+          else bufferUtil.unmask(buffer, mask);
+        };
+      } catch (e) {
+      }
+    }
+  }
+});
+
+// node_modules/ws/lib/limiter.js
+var require_limiter = __commonJS({
+  "node_modules/ws/lib/limiter.js"(exports2, module2) {
+    "use strict";
+    var kDone = /* @__PURE__ */ Symbol("kDone");
+    var kRun = /* @__PURE__ */ Symbol("kRun");
+    var Limiter = class {
+      /**
+       * Creates a new `Limiter`.
+       *
+       * @param {Number} [concurrency=Infinity] The maximum number of jobs allowed
+       *     to run concurrently
+       */
+      constructor(concurrency) {
+        this[kDone] = () => {
+          this.pending--;
+          this[kRun]();
+        };
+        this.concurrency = concurrency || Infinity;
+        this.jobs = [];
+        this.pending = 0;
+      }
+      /**
+       * Adds a job to the queue.
+       *
+       * @param {Function} job The job to run
+       * @public
+       */
+      add(job) {
+        this.jobs.push(job);
+        this[kRun]();
+      }
+      /**
+       * Removes a job from the queue and runs it if possible.
+       *
+       * @private
+       */
+      [kRun]() {
+        if (this.pending === this.concurrency) return;
+        if (this.jobs.length) {
+          const job = this.jobs.shift();
+          this.pending++;
+          job(this[kDone]);
+        }
+      }
+    };
+    module2.exports = Limiter;
+  }
+});
+
+// node_modules/ws/lib/permessage-deflate.js
+var require_permessage_deflate = __commonJS({
+  "node_modules/ws/lib/permessage-deflate.js"(exports2, module2) {
+    "use strict";
+    var zlib = require("zlib");
+    var bufferUtil = require_buffer_util();
+    var Limiter = require_limiter();
+    var { kStatusCode } = require_constants();
+    var FastBuffer = Buffer[Symbol.species];
+    var TRAILER = Buffer.from([0, 0, 255, 255]);
+    var kPerMessageDeflate = /* @__PURE__ */ Symbol("permessage-deflate");
+    var kTotalLength = /* @__PURE__ */ Symbol("total-length");
+    var kCallback = /* @__PURE__ */ Symbol("callback");
+    var kBuffers = /* @__PURE__ */ Symbol("buffers");
+    var kError = /* @__PURE__ */ Symbol("error");
+    var zlibLimiter;
+    var PerMessageDeflate2 = class {
+      /**
+       * Creates a PerMessageDeflate instance.
+       *
+       * @param {Object} [options] Configuration options
+       * @param {(Boolean|Number)} [options.clientMaxWindowBits] Advertise support
+       *     for, or request, a custom client window size
+       * @param {Boolean} [options.clientNoContextTakeover=false] Advertise/
+       *     acknowledge disabling of client context takeover
+       * @param {Number} [options.concurrencyLimit=10] The number of concurrent
+       *     calls to zlib
+       * @param {Boolean} [options.isServer=false] Create the instance in either
+       *     server or client mode
+       * @param {Number} [options.maxPayload=0] The maximum allowed message length
+       * @param {(Boolean|Number)} [options.serverMaxWindowBits] Request/confirm the
+       *     use of a custom server window size
+       * @param {Boolean} [options.serverNoContextTakeover=false] Request/accept
+       *     disabling of server context takeover
+       * @param {Number} [options.threshold=1024] Size (in bytes) below which
+       *     messages should not be compressed if context takeover is disabled
+       * @param {Object} [options.zlibDeflateOptions] Options to pass to zlib on
+       *     deflate
+       * @param {Object} [options.zlibInflateOptions] Options to pass to zlib on
+       *     inflate
+       */
+      constructor(options) {
+        this._options = options || {};
+        this._threshold = this._options.threshold !== void 0 ? this._options.threshold : 1024;
+        this._maxPayload = this._options.maxPayload | 0;
+        this._isServer = !!this._options.isServer;
+        this._deflate = null;
+        this._inflate = null;
+        this.params = null;
+        if (!zlibLimiter) {
+          const concurrency = this._options.concurrencyLimit !== void 0 ? this._options.concurrencyLimit : 10;
+          zlibLimiter = new Limiter(concurrency);
+        }
+      }
+      /**
+       * @type {String}
+       */
+      static get extensionName() {
+        return "permessage-deflate";
+      }
+      /**
+       * Create an extension negotiation offer.
+       *
+       * @return {Object} Extension parameters
+       * @public
+       */
+      offer() {
+        const params = {};
+        if (this._options.serverNoContextTakeover) {
+          params.server_no_context_takeover = true;
+        }
+        if (this._options.clientNoContextTakeover) {
+          params.client_no_context_takeover = true;
+        }
+        if (this._options.serverMaxWindowBits) {
+          params.server_max_window_bits = this._options.serverMaxWindowBits;
+        }
+        if (this._options.clientMaxWindowBits) {
+          params.client_max_window_bits = this._options.clientMaxWindowBits;
+        } else if (this._options.clientMaxWindowBits == null) {
+          params.client_max_window_bits = true;
+        }
+        return params;
+      }
+      /**
+       * Accept an extension negotiation offer/response.
+       *
+       * @param {Array} configurations The extension negotiation offers/reponse
+       * @return {Object} Accepted configuration
+       * @public
+       */
+      accept(configurations) {
+        configurations = this.normalizeParams(configurations);
+        this.params = this._isServer ? this.acceptAsServer(configurations) : this.acceptAsClient(configurations);
+        return this.params;
+      }
+      /**
+       * Releases all resources used by the extension.
+       *
+       * @public
+       */
+      cleanup() {
+        if (this._inflate) {
+          this._inflate.close();
+          this._inflate = null;
+        }
+        if (this._deflate) {
+          const callback = this._deflate[kCallback];
+          this._deflate.close();
+          this._deflate = null;
+          if (callback) {
+            callback(
+              new Error(
+                "The deflate stream was closed while data was being processed"
+              )
+            );
+          }
+        }
+      }
+      /**
+       *  Accept an extension negotiation offer.
+       *
+       * @param {Array} offers The extension negotiation offers
+       * @return {Object} Accepted configuration
+       * @private
+       */
+      acceptAsServer(offers) {
+        const opts = this._options;
+        const accepted = offers.find((params) => {
+          if (opts.serverNoContextTakeover === false && params.server_no_context_takeover || params.server_max_window_bits && (opts.serverMaxWindowBits === false || typeof opts.serverMaxWindowBits === "number" && opts.serverMaxWindowBits > params.server_max_window_bits) || typeof opts.clientMaxWindowBits === "number" && !params.client_max_window_bits) {
+            return false;
+          }
+          return true;
+        });
+        if (!accepted) {
+          throw new Error("None of the extension offers can be accepted");
+        }
+        if (opts.serverNoContextTakeover) {
+          accepted.server_no_context_takeover = true;
+        }
+        if (opts.clientNoContextTakeover) {
+          accepted.client_no_context_takeover = true;
+        }
+        if (typeof opts.serverMaxWindowBits === "number") {
+          accepted.server_max_window_bits = opts.serverMaxWindowBits;
+        }
+        if (typeof opts.clientMaxWindowBits === "number") {
+          accepted.client_max_window_bits = opts.clientMaxWindowBits;
+        } else if (accepted.client_max_window_bits === true || opts.clientMaxWindowBits === false) {
+          delete accepted.client_max_window_bits;
+        }
+        return accepted;
+      }
+      /**
+       * Accept the extension negotiation response.
+       *
+       * @param {Array} response The extension negotiation response
+       * @return {Object} Accepted configuration
+       * @private
+       */
+      acceptAsClient(response) {
+        const params = response[0];
+        if (this._options.clientNoContextTakeover === false && params.client_no_context_takeover) {
+          throw new Error('Unexpected parameter "client_no_context_takeover"');
+        }
+        if (!params.client_max_window_bits) {
+          if (typeof this._options.clientMaxWindowBits === "number") {
+            params.client_max_window_bits = this._options.clientMaxWindowBits;
+          }
+        } else if (this._options.clientMaxWindowBits === false || typeof this._options.clientMaxWindowBits === "number" && params.client_max_window_bits > this._options.clientMaxWindowBits) {
+          throw new Error(
+            'Unexpected or invalid parameter "client_max_window_bits"'
+          );
+        }
+        return params;
+      }
+      /**
+       * Normalize parameters.
+       *
+       * @param {Array} configurations The extension negotiation offers/reponse
+       * @return {Array} The offers/response with normalized parameters
+       * @private
+       */
+      normalizeParams(configurations) {
+        configurations.forEach((params) => {
+          Object.keys(params).forEach((key) => {
+            let value = params[key];
+            if (value.length > 1) {
+              throw new Error(`Parameter "${key}" must have only a single value`);
+            }
+            value = value[0];
+            if (key === "client_max_window_bits") {
+              if (value !== true) {
+                const num = +value;
+                if (!Number.isInteger(num) || num < 8 || num > 15) {
+                  throw new TypeError(
+                    `Invalid value for parameter "${key}": ${value}`
+                  );
+                }
+                value = num;
+              } else if (!this._isServer) {
+                throw new TypeError(
+                  `Invalid value for parameter "${key}": ${value}`
+                );
+              }
+            } else if (key === "server_max_window_bits") {
+              const num = +value;
+              if (!Number.isInteger(num) || num < 8 || num > 15) {
+                throw new TypeError(
+                  `Invalid value for parameter "${key}": ${value}`
+                );
+              }
+              value = num;
+            } else if (key === "client_no_context_takeover" || key === "server_no_context_takeover") {
+              if (value !== true) {
+                throw new TypeError(
+                  `Invalid value for parameter "${key}": ${value}`
+                );
+              }
+            } else {
+              throw new Error(`Unknown parameter "${key}"`);
+            }
+            params[key] = value;
+          });
+        });
+        return configurations;
+      }
+      /**
+       * Decompress data. Concurrency limited.
+       *
+       * @param {Buffer} data Compressed data
+       * @param {Boolean} fin Specifies whether or not this is the last fragment
+       * @param {Function} callback Callback
+       * @public
+       */
+      decompress(data, fin, callback) {
+        zlibLimiter.add((done) => {
+          this._decompress(data, fin, (err, result) => {
+            done();
+            callback(err, result);
+          });
+        });
+      }
+      /**
+       * Compress data. Concurrency limited.
+       *
+       * @param {(Buffer|String)} data Data to compress
+       * @param {Boolean} fin Specifies whether or not this is the last fragment
+       * @param {Function} callback Callback
+       * @public
+       */
+      compress(data, fin, callback) {
+        zlibLimiter.add((done) => {
+          this._compress(data, fin, (err, result) => {
+            done();
+            callback(err, result);
+          });
+        });
+      }
+      /**
+       * Decompress data.
+       *
+       * @param {Buffer} data Compressed data
+       * @param {Boolean} fin Specifies whether or not this is the last fragment
+       * @param {Function} callback Callback
+       * @private
+       */
+      _decompress(data, fin, callback) {
+        const endpoint = this._isServer ? "client" : "server";
+        if (!this._inflate) {
+          const key = `${endpoint}_max_window_bits`;
+          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+          this._inflate = zlib.createInflateRaw({
+            ...this._options.zlibInflateOptions,
+            windowBits
+          });
+          this._inflate[kPerMessageDeflate] = this;
+          this._inflate[kTotalLength] = 0;
+          this._inflate[kBuffers] = [];
+          this._inflate.on("error", inflateOnError);
+          this._inflate.on("data", inflateOnData);
+        }
+        this._inflate[kCallback] = callback;
+        this._inflate.write(data);
+        if (fin) this._inflate.write(TRAILER);
+        this._inflate.flush(() => {
+          const err = this._inflate[kError];
+          if (err) {
+            this._inflate.close();
+            this._inflate = null;
+            callback(err);
+            return;
+          }
+          const data2 = bufferUtil.concat(
+            this._inflate[kBuffers],
+            this._inflate[kTotalLength]
+          );
+          if (this._inflate._readableState.endEmitted) {
+            this._inflate.close();
+            this._inflate = null;
+          } else {
+            this._inflate[kTotalLength] = 0;
+            this._inflate[kBuffers] = [];
+            if (fin && this.params[`${endpoint}_no_context_takeover`]) {
+              this._inflate.reset();
+            }
+          }
+          callback(null, data2);
+        });
+      }
+      /**
+       * Compress data.
+       *
+       * @param {(Buffer|String)} data Data to compress
+       * @param {Boolean} fin Specifies whether or not this is the last fragment
+       * @param {Function} callback Callback
+       * @private
+       */
+      _compress(data, fin, callback) {
+        const endpoint = this._isServer ? "server" : "client";
+        if (!this._deflate) {
+          const key = `${endpoint}_max_window_bits`;
+          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+          this._deflate = zlib.createDeflateRaw({
+            ...this._options.zlibDeflateOptions,
+            windowBits
+          });
+          this._deflate[kTotalLength] = 0;
+          this._deflate[kBuffers] = [];
+          this._deflate.on("data", deflateOnData);
+        }
+        this._deflate[kCallback] = callback;
+        this._deflate.write(data);
+        this._deflate.flush(zlib.Z_SYNC_FLUSH, () => {
+          if (!this._deflate) {
+            return;
+          }
+          let data2 = bufferUtil.concat(
+            this._deflate[kBuffers],
+            this._deflate[kTotalLength]
+          );
+          if (fin) {
+            data2 = new FastBuffer(data2.buffer, data2.byteOffset, data2.length - 4);
+          }
+          this._deflate[kCallback] = null;
+          this._deflate[kTotalLength] = 0;
+          this._deflate[kBuffers] = [];
+          if (fin && this.params[`${endpoint}_no_context_takeover`]) {
+            this._deflate.reset();
+          }
+          callback(null, data2);
+        });
+      }
+    };
+    module2.exports = PerMessageDeflate2;
+    function deflateOnData(chunk) {
+      this[kBuffers].push(chunk);
+      this[kTotalLength] += chunk.length;
+    }
+    function inflateOnData(chunk) {
+      this[kTotalLength] += chunk.length;
+      if (this[kPerMessageDeflate]._maxPayload < 1 || this[kTotalLength] <= this[kPerMessageDeflate]._maxPayload) {
+        this[kBuffers].push(chunk);
+        return;
+      }
+      this[kError] = new RangeError("Max payload size exceeded");
+      this[kError].code = "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH";
+      this[kError][kStatusCode] = 1009;
+      this.removeListener("data", inflateOnData);
+      this.reset();
+    }
+    function inflateOnError(err) {
+      this[kPerMessageDeflate]._inflate = null;
+      if (this[kError]) {
+        this[kCallback](this[kError]);
+        return;
+      }
+      err[kStatusCode] = 1007;
+      this[kCallback](err);
+    }
+  }
+});
+
+// node_modules/ws/lib/validation.js
+var require_validation = __commonJS({
+  "node_modules/ws/lib/validation.js"(exports2, module2) {
+    "use strict";
+    var { isUtf8 } = require("buffer");
+    var { hasBlob } = require_constants();
+    var tokenChars = [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      // 0 - 15
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      // 16 - 31
+      0,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      0,
+      // 32 - 47
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      // 48 - 63
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      // 64 - 79
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      // 80 - 95
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      // 96 - 111
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0
+      // 112 - 127
+    ];
+    function isValidStatusCode(code) {
+      return code >= 1e3 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006 || code >= 3e3 && code <= 4999;
+    }
+    function _isValidUTF8(buf) {
+      const len = buf.length;
+      let i = 0;
+      while (i < len) {
+        if ((buf[i] & 128) === 0) {
+          i++;
+        } else if ((buf[i] & 224) === 192) {
+          if (i + 1 === len || (buf[i + 1] & 192) !== 128 || (buf[i] & 254) === 192) {
+            return false;
+          }
+          i += 2;
+        } else if ((buf[i] & 240) === 224) {
+          if (i + 2 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || buf[i] === 224 && (buf[i + 1] & 224) === 128 || // Overlong
+          buf[i] === 237 && (buf[i + 1] & 224) === 160) {
+            return false;
+          }
+          i += 3;
+        } else if ((buf[i] & 248) === 240) {
+          if (i + 3 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || (buf[i + 3] & 192) !== 128 || buf[i] === 240 && (buf[i + 1] & 240) === 128 || // Overlong
+          buf[i] === 244 && buf[i + 1] > 143 || buf[i] > 244) {
+            return false;
+          }
+          i += 4;
+        } else {
+          return false;
+        }
+      }
+      return true;
+    }
+    function isBlob(value) {
+      return hasBlob && typeof value === "object" && typeof value.arrayBuffer === "function" && typeof value.type === "string" && typeof value.stream === "function" && (value[Symbol.toStringTag] === "Blob" || value[Symbol.toStringTag] === "File");
+    }
+    module2.exports = {
+      isBlob,
+      isValidStatusCode,
+      isValidUTF8: _isValidUTF8,
+      tokenChars
+    };
+    if (isUtf8) {
+      module2.exports.isValidUTF8 = function(buf) {
+        return buf.length < 24 ? _isValidUTF8(buf) : isUtf8(buf);
+      };
+    } else if (!process.env.WS_NO_UTF_8_VALIDATE) {
+      try {
+        const isValidUTF8 = require("utf-8-validate");
+        module2.exports.isValidUTF8 = function(buf) {
+          return buf.length < 32 ? _isValidUTF8(buf) : isValidUTF8(buf);
+        };
+      } catch (e) {
+      }
+    }
+  }
+});
+
+// node_modules/ws/lib/receiver.js
+var require_receiver = __commonJS({
+  "node_modules/ws/lib/receiver.js"(exports2, module2) {
+    "use strict";
+    var { Writable } = require("stream");
+    var PerMessageDeflate2 = require_permessage_deflate();
+    var {
+      BINARY_TYPES,
+      EMPTY_BUFFER,
+      kStatusCode,
+      kWebSocket
+    } = require_constants();
+    var { concat, toArrayBuffer, unmask } = require_buffer_util();
+    var { isValidStatusCode, isValidUTF8 } = require_validation();
+    var FastBuffer = Buffer[Symbol.species];
+    var GET_INFO = 0;
+    var GET_PAYLOAD_LENGTH_16 = 1;
+    var GET_PAYLOAD_LENGTH_64 = 2;
+    var GET_MASK = 3;
+    var GET_DATA = 4;
+    var INFLATING = 5;
+    var DEFER_EVENT = 6;
+    var Receiver2 = class extends Writable {
+      /**
+       * Creates a Receiver instance.
+       *
+       * @param {Object} [options] Options object
+       * @param {Boolean} [options.allowSynchronousEvents=true] Specifies whether
+       *     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+       *     multiple times in the same tick
+       * @param {String} [options.binaryType=nodebuffer] The type for binary data
+       * @param {Object} [options.extensions] An object containing the negotiated
+       *     extensions
+       * @param {Boolean} [options.isServer=false] Specifies whether to operate in
+       *     client or server mode
+       * @param {Number} [options.maxBufferedChunks=0] The maximum number of
+       *     buffered data chunks
+       * @param {Number} [options.maxFragments=0] The maximum number of message
+       *     fragments
+       * @param {Number} [options.maxPayload=0] The maximum allowed message length
+       * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+       *     not to skip UTF-8 validation for text and close messages
+       */
+      constructor(options = {}) {
+        super();
+        this._allowSynchronousEvents = options.allowSynchronousEvents !== void 0 ? options.allowSynchronousEvents : true;
+        this._binaryType = options.binaryType || BINARY_TYPES[0];
+        this._extensions = options.extensions || {};
+        this._isServer = !!options.isServer;
+        this._maxBufferedChunks = options.maxBufferedChunks | 0;
+        this._maxFragments = options.maxFragments | 0;
+        this._maxPayload = options.maxPayload | 0;
+        this._skipUTF8Validation = !!options.skipUTF8Validation;
+        this[kWebSocket] = void 0;
+        this._bufferedBytes = 0;
+        this._buffers = [];
+        this._compressed = false;
+        this._payloadLength = 0;
+        this._mask = void 0;
+        this._fragmented = 0;
+        this._masked = false;
+        this._fin = false;
+        this._opcode = 0;
+        this._totalPayloadLength = 0;
+        this._messageLength = 0;
+        this._fragments = [];
+        this._errored = false;
+        this._loop = false;
+        this._state = GET_INFO;
+      }
+      /**
+       * Implements `Writable.prototype._write()`.
+       *
+       * @param {Buffer} chunk The chunk of data to write
+       * @param {String} encoding The character encoding of `chunk`
+       * @param {Function} cb Callback
+       * @private
+       */
+      _write(chunk, encoding, cb) {
+        if (this._opcode === 8 && this._state == GET_INFO) return cb();
+        if (this._maxBufferedChunks > 0 && this._buffers.length >= this._maxBufferedChunks) {
+          cb(
+            this.createError(
+              RangeError,
+              "Too many buffered chunks",
+              false,
+              1008,
+              "WS_ERR_TOO_MANY_BUFFERED_PARTS"
+            )
+          );
+          return;
+        }
+        this._bufferedBytes += chunk.length;
+        this._buffers.push(chunk);
+        this.startLoop(cb);
+      }
+      /**
+       * Consumes `n` bytes from the buffered data.
+       *
+       * @param {Number} n The number of bytes to consume
+       * @return {Buffer} The consumed bytes
+       * @private
+       */
+      consume(n) {
+        this._bufferedBytes -= n;
+        if (n === this._buffers[0].length) return this._buffers.shift();
+        if (n < this._buffers[0].length) {
+          const buf = this._buffers[0];
+          this._buffers[0] = new FastBuffer(
+            buf.buffer,
+            buf.byteOffset + n,
+            buf.length - n
+          );
+          return new FastBuffer(buf.buffer, buf.byteOffset, n);
+        }
+        const dst = Buffer.allocUnsafe(n);
+        do {
+          const buf = this._buffers[0];
+          const offset = dst.length - n;
+          if (n >= buf.length) {
+            dst.set(this._buffers.shift(), offset);
+          } else {
+            dst.set(new Uint8Array(buf.buffer, buf.byteOffset, n), offset);
+            this._buffers[0] = new FastBuffer(
+              buf.buffer,
+              buf.byteOffset + n,
+              buf.length - n
+            );
+          }
+          n -= buf.length;
+        } while (n > 0);
+        return dst;
+      }
+      /**
+       * Starts the parsing loop.
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      startLoop(cb) {
+        this._loop = true;
+        do {
+          switch (this._state) {
+            case GET_INFO:
+              this.getInfo(cb);
+              break;
+            case GET_PAYLOAD_LENGTH_16:
+              this.getPayloadLength16(cb);
+              break;
+            case GET_PAYLOAD_LENGTH_64:
+              this.getPayloadLength64(cb);
+              break;
+            case GET_MASK:
+              this.getMask();
+              break;
+            case GET_DATA:
+              this.getData(cb);
+              break;
+            case INFLATING:
+            case DEFER_EVENT:
+              this._loop = false;
+              return;
+          }
+        } while (this._loop);
+        if (!this._errored) cb();
+      }
+      /**
+       * Reads the first two bytes of a frame.
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      getInfo(cb) {
+        if (this._bufferedBytes < 2) {
+          this._loop = false;
+          return;
+        }
+        const buf = this.consume(2);
+        if ((buf[0] & 48) !== 0) {
+          const error = this.createError(
+            RangeError,
+            "RSV2 and RSV3 must be clear",
+            true,
+            1002,
+            "WS_ERR_UNEXPECTED_RSV_2_3"
+          );
+          cb(error);
+          return;
+        }
+        const compressed = (buf[0] & 64) === 64;
+        if (compressed && !this._extensions[PerMessageDeflate2.extensionName]) {
+          const error = this.createError(
+            RangeError,
+            "RSV1 must be clear",
+            true,
+            1002,
+            "WS_ERR_UNEXPECTED_RSV_1"
+          );
+          cb(error);
+          return;
+        }
+        this._fin = (buf[0] & 128) === 128;
+        this._opcode = buf[0] & 15;
+        this._payloadLength = buf[1] & 127;
+        if (this._opcode === 0) {
+          if (compressed) {
+            const error = this.createError(
+              RangeError,
+              "RSV1 must be clear",
+              true,
+              1002,
+              "WS_ERR_UNEXPECTED_RSV_1"
+            );
+            cb(error);
+            return;
+          }
+          if (!this._fragmented) {
+            const error = this.createError(
+              RangeError,
+              "invalid opcode 0",
+              true,
+              1002,
+              "WS_ERR_INVALID_OPCODE"
+            );
+            cb(error);
+            return;
+          }
+          this._opcode = this._fragmented;
+        } else if (this._opcode === 1 || this._opcode === 2) {
+          if (this._fragmented) {
+            const error = this.createError(
+              RangeError,
+              `invalid opcode ${this._opcode}`,
+              true,
+              1002,
+              "WS_ERR_INVALID_OPCODE"
+            );
+            cb(error);
+            return;
+          }
+          this._compressed = compressed;
+        } else if (this._opcode > 7 && this._opcode < 11) {
+          if (!this._fin) {
+            const error = this.createError(
+              RangeError,
+              "FIN must be set",
+              true,
+              1002,
+              "WS_ERR_EXPECTED_FIN"
+            );
+            cb(error);
+            return;
+          }
+          if (compressed) {
+            const error = this.createError(
+              RangeError,
+              "RSV1 must be clear",
+              true,
+              1002,
+              "WS_ERR_UNEXPECTED_RSV_1"
+            );
+            cb(error);
+            return;
+          }
+          if (this._payloadLength > 125 || this._opcode === 8 && this._payloadLength === 1) {
+            const error = this.createError(
+              RangeError,
+              `invalid payload length ${this._payloadLength}`,
+              true,
+              1002,
+              "WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH"
+            );
+            cb(error);
+            return;
+          }
+        } else {
+          const error = this.createError(
+            RangeError,
+            `invalid opcode ${this._opcode}`,
+            true,
+            1002,
+            "WS_ERR_INVALID_OPCODE"
+          );
+          cb(error);
+          return;
+        }
+        if (!this._fin && !this._fragmented) this._fragmented = this._opcode;
+        this._masked = (buf[1] & 128) === 128;
+        if (this._isServer) {
+          if (!this._masked) {
+            const error = this.createError(
+              RangeError,
+              "MASK must be set",
+              true,
+              1002,
+              "WS_ERR_EXPECTED_MASK"
+            );
+            cb(error);
+            return;
+          }
+        } else if (this._masked) {
+          const error = this.createError(
+            RangeError,
+            "MASK must be clear",
+            true,
+            1002,
+            "WS_ERR_UNEXPECTED_MASK"
+          );
+          cb(error);
+          return;
+        }
+        if (this._payloadLength === 126) this._state = GET_PAYLOAD_LENGTH_16;
+        else if (this._payloadLength === 127) this._state = GET_PAYLOAD_LENGTH_64;
+        else this.haveLength(cb);
+      }
+      /**
+       * Gets extended payload length (7+16).
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      getPayloadLength16(cb) {
+        if (this._bufferedBytes < 2) {
+          this._loop = false;
+          return;
+        }
+        this._payloadLength = this.consume(2).readUInt16BE(0);
+        this.haveLength(cb);
+      }
+      /**
+       * Gets extended payload length (7+64).
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      getPayloadLength64(cb) {
+        if (this._bufferedBytes < 8) {
+          this._loop = false;
+          return;
+        }
+        const buf = this.consume(8);
+        const num = buf.readUInt32BE(0);
+        if (num > Math.pow(2, 53 - 32) - 1) {
+          const error = this.createError(
+            RangeError,
+            "Unsupported WebSocket frame: payload length > 2^53 - 1",
+            false,
+            1009,
+            "WS_ERR_UNSUPPORTED_DATA_PAYLOAD_LENGTH"
+          );
+          cb(error);
+          return;
+        }
+        this._payloadLength = num * Math.pow(2, 32) + buf.readUInt32BE(4);
+        this.haveLength(cb);
+      }
+      /**
+       * Payload length has been read.
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      haveLength(cb) {
+        if (this._payloadLength && this._opcode < 8) {
+          this._totalPayloadLength += this._payloadLength;
+          if (this._totalPayloadLength > this._maxPayload && this._maxPayload > 0) {
+            const error = this.createError(
+              RangeError,
+              "Max payload size exceeded",
+              false,
+              1009,
+              "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH"
+            );
+            cb(error);
+            return;
+          }
+        }
+        if (this._masked) this._state = GET_MASK;
+        else this._state = GET_DATA;
+      }
+      /**
+       * Reads mask bytes.
+       *
+       * @private
+       */
+      getMask() {
+        if (this._bufferedBytes < 4) {
+          this._loop = false;
+          return;
+        }
+        this._mask = this.consume(4);
+        this._state = GET_DATA;
+      }
+      /**
+       * Reads data bytes.
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      getData(cb) {
+        let data = EMPTY_BUFFER;
+        if (this._payloadLength) {
+          if (this._bufferedBytes < this._payloadLength) {
+            this._loop = false;
+            return;
+          }
+          data = this.consume(this._payloadLength);
+          if (this._masked && (this._mask[0] | this._mask[1] | this._mask[2] | this._mask[3]) !== 0) {
+            unmask(data, this._mask);
+          }
+        }
+        if (this._opcode > 7) {
+          this.controlMessage(data, cb);
+          return;
+        }
+        if (this._compressed) {
+          this._state = INFLATING;
+          this.decompress(data, cb);
+          return;
+        }
+        if (data.length) {
+          if (this._maxFragments > 0 && this._fragments.length >= this._maxFragments) {
+            const error = this.createError(
+              RangeError,
+              "Too many message fragments",
+              false,
+              1008,
+              "WS_ERR_TOO_MANY_BUFFERED_PARTS"
+            );
+            cb(error);
+            return;
+          }
+          this._messageLength = this._totalPayloadLength;
+          this._fragments.push(data);
+        }
+        this.dataMessage(cb);
+      }
+      /**
+       * Decompresses data.
+       *
+       * @param {Buffer} data Compressed data
+       * @param {Function} cb Callback
+       * @private
+       */
+      decompress(data, cb) {
+        const perMessageDeflate = this._extensions[PerMessageDeflate2.extensionName];
+        perMessageDeflate.decompress(data, this._fin, (err, buf) => {
+          if (err) return cb(err);
+          if (buf.length) {
+            this._messageLength += buf.length;
+            if (this._messageLength > this._maxPayload && this._maxPayload > 0) {
+              const error = this.createError(
+                RangeError,
+                "Max payload size exceeded",
+                false,
+                1009,
+                "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH"
+              );
+              cb(error);
+              return;
+            }
+            if (this._maxFragments > 0 && this._fragments.length >= this._maxFragments) {
+              const error = this.createError(
+                RangeError,
+                "Too many message fragments",
+                false,
+                1008,
+                "WS_ERR_TOO_MANY_BUFFERED_PARTS"
+              );
+              cb(error);
+              return;
+            }
+            this._fragments.push(buf);
+          }
+          this.dataMessage(cb);
+          if (this._state === GET_INFO) this.startLoop(cb);
+        });
+      }
+      /**
+       * Handles a data message.
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      dataMessage(cb) {
+        if (!this._fin) {
+          this._state = GET_INFO;
+          return;
+        }
+        const messageLength = this._messageLength;
+        const fragments = this._fragments;
+        this._totalPayloadLength = 0;
+        this._messageLength = 0;
+        this._fragmented = 0;
+        this._fragments = [];
+        if (this._opcode === 2) {
+          let data;
+          if (this._binaryType === "nodebuffer") {
+            data = concat(fragments, messageLength);
+          } else if (this._binaryType === "arraybuffer") {
+            data = toArrayBuffer(concat(fragments, messageLength));
+          } else if (this._binaryType === "blob") {
+            data = new Blob(fragments);
+          } else {
+            data = fragments;
+          }
+          if (this._allowSynchronousEvents) {
+            this.emit("message", data, true);
+            this._state = GET_INFO;
+          } else {
+            this._state = DEFER_EVENT;
+            setImmediate(() => {
+              this.emit("message", data, true);
+              this._state = GET_INFO;
+              this.startLoop(cb);
+            });
+          }
+        } else {
+          const buf = concat(fragments, messageLength);
+          if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
+            const error = this.createError(
+              Error,
+              "invalid UTF-8 sequence",
+              true,
+              1007,
+              "WS_ERR_INVALID_UTF8"
+            );
+            cb(error);
+            return;
+          }
+          if (this._state === INFLATING || this._allowSynchronousEvents) {
+            this.emit("message", buf, false);
+            this._state = GET_INFO;
+          } else {
+            this._state = DEFER_EVENT;
+            setImmediate(() => {
+              this.emit("message", buf, false);
+              this._state = GET_INFO;
+              this.startLoop(cb);
+            });
+          }
+        }
+      }
+      /**
+       * Handles a control message.
+       *
+       * @param {Buffer} data Data to handle
+       * @return {(Error|RangeError|undefined)} A possible error
+       * @private
+       */
+      controlMessage(data, cb) {
+        if (this._opcode === 8) {
+          if (data.length === 0) {
+            this._loop = false;
+            this.emit("conclude", 1005, EMPTY_BUFFER);
+            this.end();
+          } else {
+            const code = data.readUInt16BE(0);
+            if (!isValidStatusCode(code)) {
+              const error = this.createError(
+                RangeError,
+                `invalid status code ${code}`,
+                true,
+                1002,
+                "WS_ERR_INVALID_CLOSE_CODE"
+              );
+              cb(error);
+              return;
+            }
+            const buf = new FastBuffer(
+              data.buffer,
+              data.byteOffset + 2,
+              data.length - 2
+            );
+            if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
+              const error = this.createError(
+                Error,
+                "invalid UTF-8 sequence",
+                true,
+                1007,
+                "WS_ERR_INVALID_UTF8"
+              );
+              cb(error);
+              return;
+            }
+            this._loop = false;
+            this.emit("conclude", code, buf);
+            this.end();
+          }
+          this._state = GET_INFO;
+          return;
+        }
+        if (this._allowSynchronousEvents) {
+          this.emit(this._opcode === 9 ? "ping" : "pong", data);
+          this._state = GET_INFO;
+        } else {
+          this._state = DEFER_EVENT;
+          setImmediate(() => {
+            this.emit(this._opcode === 9 ? "ping" : "pong", data);
+            this._state = GET_INFO;
+            this.startLoop(cb);
+          });
+        }
+      }
+      /**
+       * Builds an error object.
+       *
+       * @param {function(new:Error|RangeError)} ErrorCtor The error constructor
+       * @param {String} message The error message
+       * @param {Boolean} prefix Specifies whether or not to add a default prefix to
+       *     `message`
+       * @param {Number} statusCode The status code
+       * @param {String} errorCode The exposed error code
+       * @return {(Error|RangeError)} The error
+       * @private
+       */
+      createError(ErrorCtor, message, prefix, statusCode, errorCode) {
+        this._loop = false;
+        this._errored = true;
+        const err = new ErrorCtor(
+          prefix ? `Invalid WebSocket frame: ${message}` : message
+        );
+        Error.captureStackTrace(err, this.createError);
+        err.code = errorCode;
+        err[kStatusCode] = statusCode;
+        return err;
+      }
+    };
+    module2.exports = Receiver2;
+  }
+});
+
+// node_modules/ws/lib/sender.js
+var require_sender = __commonJS({
+  "node_modules/ws/lib/sender.js"(exports2, module2) {
+    "use strict";
+    var { Duplex } = require("stream");
+    var { randomFillSync } = require("crypto");
+    var {
+      types: { isUint8Array }
+    } = require("util");
+    var PerMessageDeflate2 = require_permessage_deflate();
+    var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants();
+    var { isBlob, isValidStatusCode } = require_validation();
+    var { mask: applyMask, toBuffer } = require_buffer_util();
+    var kByteLength = /* @__PURE__ */ Symbol("kByteLength");
+    var maskBuffer = Buffer.alloc(4);
+    var RANDOM_POOL_SIZE = 8 * 1024;
+    var randomPool;
+    var randomPoolPointer = RANDOM_POOL_SIZE;
+    var DEFAULT = 0;
+    var DEFLATING = 1;
+    var GET_BLOB_DATA = 2;
+    var Sender2 = class _Sender {
+      /**
+       * Creates a Sender instance.
+       *
+       * @param {Duplex} socket The connection socket
+       * @param {Object} [extensions] An object containing the negotiated extensions
+       * @param {Function} [generateMask] The function used to generate the masking
+       *     key
+       */
+      constructor(socket, extensions, generateMask) {
+        this._extensions = extensions || {};
+        if (generateMask) {
+          this._generateMask = generateMask;
+          this._maskBuffer = Buffer.alloc(4);
+        }
+        this._socket = socket;
+        this._firstFragment = true;
+        this._compress = false;
+        this._bufferedBytes = 0;
+        this._queue = [];
+        this._state = DEFAULT;
+        this.onerror = NOOP;
+        this[kWebSocket] = void 0;
+      }
+      /**
+       * Frames a piece of data according to the HyBi WebSocket protocol.
+       *
+       * @param {(Buffer|String)} data The data to frame
+       * @param {Object} options Options object
+       * @param {Boolean} [options.fin=false] Specifies whether or not to set the
+       *     FIN bit
+       * @param {Function} [options.generateMask] The function used to generate the
+       *     masking key
+       * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+       *     `data`
+       * @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+       *     key
+       * @param {Number} options.opcode The opcode
+       * @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+       *     modified
+       * @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+       *     RSV1 bit
+       * @return {(Buffer|String)[]} The framed data
+       * @public
+       */
+      static frame(data, options) {
+        let mask;
+        let merge = false;
+        let offset = 2;
+        let skipMasking = false;
+        if (options.mask) {
+          mask = options.maskBuffer || maskBuffer;
+          if (options.generateMask) {
+            options.generateMask(mask);
+          } else {
+            if (randomPoolPointer === RANDOM_POOL_SIZE) {
+              if (randomPool === void 0) {
+                randomPool = Buffer.alloc(RANDOM_POOL_SIZE);
+              }
+              randomFillSync(randomPool, 0, RANDOM_POOL_SIZE);
+              randomPoolPointer = 0;
+            }
+            mask[0] = randomPool[randomPoolPointer++];
+            mask[1] = randomPool[randomPoolPointer++];
+            mask[2] = randomPool[randomPoolPointer++];
+            mask[3] = randomPool[randomPoolPointer++];
+          }
+          skipMasking = (mask[0] | mask[1] | mask[2] | mask[3]) === 0;
+          offset = 6;
+        }
+        let dataLength;
+        if (typeof data === "string") {
+          if ((!options.mask || skipMasking) && options[kByteLength] !== void 0) {
+            dataLength = options[kByteLength];
+          } else {
+            data = Buffer.from(data);
+            dataLength = data.length;
+          }
+        } else {
+          dataLength = data.length;
+          merge = options.mask && options.readOnly && !skipMasking;
+        }
+        let payloadLength = dataLength;
+        if (dataLength >= 65536) {
+          offset += 8;
+          payloadLength = 127;
+        } else if (dataLength > 125) {
+          offset += 2;
+          payloadLength = 126;
+        }
+        const target = Buffer.allocUnsafe(merge ? dataLength + offset : offset);
+        target[0] = options.fin ? options.opcode | 128 : options.opcode;
+        if (options.rsv1) target[0] |= 64;
+        target[1] = payloadLength;
+        if (payloadLength === 126) {
+          target.writeUInt16BE(dataLength, 2);
+        } else if (payloadLength === 127) {
+          target[2] = target[3] = 0;
+          target.writeUIntBE(dataLength, 4, 6);
+        }
+        if (!options.mask) return [target, data];
+        target[1] |= 128;
+        target[offset - 4] = mask[0];
+        target[offset - 3] = mask[1];
+        target[offset - 2] = mask[2];
+        target[offset - 1] = mask[3];
+        if (skipMasking) return [target, data];
+        if (merge) {
+          applyMask(data, mask, target, offset, dataLength);
+          return [target];
+        }
+        applyMask(data, mask, data, 0, dataLength);
+        return [target, data];
+      }
+      /**
+       * Sends a close message to the other peer.
+       *
+       * @param {Number} [code] The status code component of the body
+       * @param {(String|Buffer)} [data] The message component of the body
+       * @param {Boolean} [mask=false] Specifies whether or not to mask the message
+       * @param {Function} [cb] Callback
+       * @public
+       */
+      close(code, data, mask, cb) {
+        let buf;
+        if (code === void 0) {
+          buf = EMPTY_BUFFER;
+        } else if (typeof code !== "number" || !isValidStatusCode(code)) {
+          throw new TypeError("First argument must be a valid error code number");
+        } else if (data === void 0 || !data.length) {
+          buf = Buffer.allocUnsafe(2);
+          buf.writeUInt16BE(code, 0);
+        } else {
+          const length = Buffer.byteLength(data);
+          if (length > 123) {
+            throw new RangeError("The message must not be greater than 123 bytes");
+          }
+          buf = Buffer.allocUnsafe(2 + length);
+          buf.writeUInt16BE(code, 0);
+          if (typeof data === "string") {
+            buf.write(data, 2);
+          } else if (isUint8Array(data)) {
+            buf.set(data, 2);
+          } else {
+            throw new TypeError("Second argument must be a string or a Uint8Array");
+          }
+        }
+        const options = {
+          [kByteLength]: buf.length,
+          fin: true,
+          generateMask: this._generateMask,
+          mask,
+          maskBuffer: this._maskBuffer,
+          opcode: 8,
+          readOnly: false,
+          rsv1: false
+        };
+        if (this._state !== DEFAULT) {
+          this.enqueue([this.dispatch, buf, false, options, cb]);
+        } else {
+          this.sendFrame(_Sender.frame(buf, options), cb);
+        }
+      }
+      /**
+       * Sends a ping message to the other peer.
+       *
+       * @param {*} data The message to send
+       * @param {Boolean} [mask=false] Specifies whether or not to mask `data`
+       * @param {Function} [cb] Callback
+       * @public
+       */
+      ping(data, mask, cb) {
+        let byteLength;
+        let readOnly;
+        if (typeof data === "string") {
+          byteLength = Buffer.byteLength(data);
+          readOnly = false;
+        } else if (isBlob(data)) {
+          byteLength = data.size;
+          readOnly = false;
+        } else {
+          data = toBuffer(data);
+          byteLength = data.length;
+          readOnly = toBuffer.readOnly;
+        }
+        if (byteLength > 125) {
+          throw new RangeError("The data size must not be greater than 125 bytes");
+        }
+        const options = {
+          [kByteLength]: byteLength,
+          fin: true,
+          generateMask: this._generateMask,
+          mask,
+          maskBuffer: this._maskBuffer,
+          opcode: 9,
+          readOnly,
+          rsv1: false
+        };
+        if (isBlob(data)) {
+          if (this._state !== DEFAULT) {
+            this.enqueue([this.getBlobData, data, false, options, cb]);
+          } else {
+            this.getBlobData(data, false, options, cb);
+          }
+        } else if (this._state !== DEFAULT) {
+          this.enqueue([this.dispatch, data, false, options, cb]);
+        } else {
+          this.sendFrame(_Sender.frame(data, options), cb);
+        }
+      }
+      /**
+       * Sends a pong message to the other peer.
+       *
+       * @param {*} data The message to send
+       * @param {Boolean} [mask=false] Specifies whether or not to mask `data`
+       * @param {Function} [cb] Callback
+       * @public
+       */
+      pong(data, mask, cb) {
+        let byteLength;
+        let readOnly;
+        if (typeof data === "string") {
+          byteLength = Buffer.byteLength(data);
+          readOnly = false;
+        } else if (isBlob(data)) {
+          byteLength = data.size;
+          readOnly = false;
+        } else {
+          data = toBuffer(data);
+          byteLength = data.length;
+          readOnly = toBuffer.readOnly;
+        }
+        if (byteLength > 125) {
+          throw new RangeError("The data size must not be greater than 125 bytes");
+        }
+        const options = {
+          [kByteLength]: byteLength,
+          fin: true,
+          generateMask: this._generateMask,
+          mask,
+          maskBuffer: this._maskBuffer,
+          opcode: 10,
+          readOnly,
+          rsv1: false
+        };
+        if (isBlob(data)) {
+          if (this._state !== DEFAULT) {
+            this.enqueue([this.getBlobData, data, false, options, cb]);
+          } else {
+            this.getBlobData(data, false, options, cb);
+          }
+        } else if (this._state !== DEFAULT) {
+          this.enqueue([this.dispatch, data, false, options, cb]);
+        } else {
+          this.sendFrame(_Sender.frame(data, options), cb);
+        }
+      }
+      /**
+       * Sends a data message to the other peer.
+       *
+       * @param {*} data The message to send
+       * @param {Object} options Options object
+       * @param {Boolean} [options.binary=false] Specifies whether `data` is binary
+       *     or text
+       * @param {Boolean} [options.compress=false] Specifies whether or not to
+       *     compress `data`
+       * @param {Boolean} [options.fin=false] Specifies whether the fragment is the
+       *     last one
+       * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+       *     `data`
+       * @param {Function} [cb] Callback
+       * @public
+       */
+      send(data, options, cb) {
+        const perMessageDeflate = this._extensions[PerMessageDeflate2.extensionName];
+        let opcode = options.binary ? 2 : 1;
+        let rsv1 = options.compress;
+        let byteLength;
+        let readOnly;
+        if (typeof data === "string") {
+          byteLength = Buffer.byteLength(data);
+          readOnly = false;
+        } else if (isBlob(data)) {
+          byteLength = data.size;
+          readOnly = false;
+        } else {
+          data = toBuffer(data);
+          byteLength = data.length;
+          readOnly = toBuffer.readOnly;
+        }
+        if (this._firstFragment) {
+          this._firstFragment = false;
+          if (rsv1 && perMessageDeflate && perMessageDeflate.params[perMessageDeflate._isServer ? "server_no_context_takeover" : "client_no_context_takeover"]) {
+            rsv1 = byteLength >= perMessageDeflate._threshold;
+          }
+          this._compress = rsv1;
+        } else {
+          rsv1 = false;
+          opcode = 0;
+        }
+        if (options.fin) this._firstFragment = true;
+        const opts = {
+          [kByteLength]: byteLength,
+          fin: options.fin,
+          generateMask: this._generateMask,
+          mask: options.mask,
+          maskBuffer: this._maskBuffer,
+          opcode,
+          readOnly,
+          rsv1
+        };
+        if (isBlob(data)) {
+          if (this._state !== DEFAULT) {
+            this.enqueue([this.getBlobData, data, this._compress, opts, cb]);
+          } else {
+            this.getBlobData(data, this._compress, opts, cb);
+          }
+        } else if (this._state !== DEFAULT) {
+          this.enqueue([this.dispatch, data, this._compress, opts, cb]);
+        } else {
+          this.dispatch(data, this._compress, opts, cb);
+        }
+      }
+      /**
+       * Gets the contents of a blob as binary data.
+       *
+       * @param {Blob} blob The blob
+       * @param {Boolean} [compress=false] Specifies whether or not to compress
+       *     the data
+       * @param {Object} options Options object
+       * @param {Boolean} [options.fin=false] Specifies whether or not to set the
+       *     FIN bit
+       * @param {Function} [options.generateMask] The function used to generate the
+       *     masking key
+       * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+       *     `data`
+       * @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+       *     key
+       * @param {Number} options.opcode The opcode
+       * @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+       *     modified
+       * @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+       *     RSV1 bit
+       * @param {Function} [cb] Callback
+       * @private
+       */
+      getBlobData(blob, compress, options, cb) {
+        this._bufferedBytes += options[kByteLength];
+        this._state = GET_BLOB_DATA;
+        blob.arrayBuffer().then((arrayBuffer) => {
+          if (this._socket.destroyed) {
+            const err = new Error(
+              "The socket was closed while the blob was being read"
+            );
+            process.nextTick(callCallbacks, this, err, cb);
+            return;
+          }
+          this._bufferedBytes -= options[kByteLength];
+          const data = toBuffer(arrayBuffer);
+          if (!compress) {
+            this._state = DEFAULT;
+            this.sendFrame(_Sender.frame(data, options), cb);
+            this.dequeue();
+          } else {
+            this.dispatch(data, compress, options, cb);
+          }
+        }).catch((err) => {
+          process.nextTick(onError, this, err, cb);
+        });
+      }
+      /**
+       * Dispatches a message.
+       *
+       * @param {(Buffer|String)} data The message to send
+       * @param {Boolean} [compress=false] Specifies whether or not to compress
+       *     `data`
+       * @param {Object} options Options object
+       * @param {Boolean} [options.fin=false] Specifies whether or not to set the
+       *     FIN bit
+       * @param {Function} [options.generateMask] The function used to generate the
+       *     masking key
+       * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+       *     `data`
+       * @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+       *     key
+       * @param {Number} options.opcode The opcode
+       * @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+       *     modified
+       * @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+       *     RSV1 bit
+       * @param {Function} [cb] Callback
+       * @private
+       */
+      dispatch(data, compress, options, cb) {
+        if (!compress) {
+          this.sendFrame(_Sender.frame(data, options), cb);
+          return;
+        }
+        const perMessageDeflate = this._extensions[PerMessageDeflate2.extensionName];
+        this._bufferedBytes += options[kByteLength];
+        this._state = DEFLATING;
+        perMessageDeflate.compress(data, options.fin, (_, buf) => {
+          if (this._socket.destroyed) {
+            const err = new Error(
+              "The socket was closed while data was being compressed"
+            );
+            callCallbacks(this, err, cb);
+            return;
+          }
+          this._bufferedBytes -= options[kByteLength];
+          this._state = DEFAULT;
+          options.readOnly = false;
+          this.sendFrame(_Sender.frame(buf, options), cb);
+          this.dequeue();
+        });
+      }
+      /**
+       * Executes queued send operations.
+       *
+       * @private
+       */
+      dequeue() {
+        while (this._state === DEFAULT && this._queue.length) {
+          const params = this._queue.shift();
+          this._bufferedBytes -= params[3][kByteLength];
+          Reflect.apply(params[0], this, params.slice(1));
+        }
+      }
+      /**
+       * Enqueues a send operation.
+       *
+       * @param {Array} params Send operation parameters.
+       * @private
+       */
+      enqueue(params) {
+        this._bufferedBytes += params[3][kByteLength];
+        this._queue.push(params);
+      }
+      /**
+       * Sends a frame.
+       *
+       * @param {(Buffer | String)[]} list The frame to send
+       * @param {Function} [cb] Callback
+       * @private
+       */
+      sendFrame(list, cb) {
+        if (list.length === 2) {
+          this._socket.cork();
+          this._socket.write(list[0]);
+          this._socket.write(list[1], cb);
+          this._socket.uncork();
+        } else {
+          this._socket.write(list[0], cb);
+        }
+      }
+    };
+    module2.exports = Sender2;
+    function callCallbacks(sender, err, cb) {
+      if (typeof cb === "function") cb(err);
+      for (let i = 0; i < sender._queue.length; i++) {
+        const params = sender._queue[i];
+        const callback = params[params.length - 1];
+        if (typeof callback === "function") callback(err);
+      }
+    }
+    function onError(sender, err, cb) {
+      callCallbacks(sender, err, cb);
+      sender.onerror(err);
+    }
+  }
+});
+
+// node_modules/ws/lib/event-target.js
+var require_event_target = __commonJS({
+  "node_modules/ws/lib/event-target.js"(exports2, module2) {
+    "use strict";
+    var { kForOnEventAttribute, kListener } = require_constants();
+    var kCode = /* @__PURE__ */ Symbol("kCode");
+    var kData = /* @__PURE__ */ Symbol("kData");
+    var kError = /* @__PURE__ */ Symbol("kError");
+    var kMessage = /* @__PURE__ */ Symbol("kMessage");
+    var kReason = /* @__PURE__ */ Symbol("kReason");
+    var kTarget = /* @__PURE__ */ Symbol("kTarget");
+    var kType = /* @__PURE__ */ Symbol("kType");
+    var kWasClean = /* @__PURE__ */ Symbol("kWasClean");
+    var Event = class {
+      /**
+       * Create a new `Event`.
+       *
+       * @param {String} type The name of the event
+       * @throws {TypeError} If the `type` argument is not specified
+       */
+      constructor(type) {
+        this[kTarget] = null;
+        this[kType] = type;
+      }
+      /**
+       * @type {*}
+       */
+      get target() {
+        return this[kTarget];
+      }
+      /**
+       * @type {String}
+       */
+      get type() {
+        return this[kType];
+      }
+    };
+    Object.defineProperty(Event.prototype, "target", { enumerable: true });
+    Object.defineProperty(Event.prototype, "type", { enumerable: true });
+    var CloseEvent = class extends Event {
+      /**
+       * Create a new `CloseEvent`.
+       *
+       * @param {String} type The name of the event
+       * @param {Object} [options] A dictionary object that allows for setting
+       *     attributes via object members of the same name
+       * @param {Number} [options.code=0] The status code explaining why the
+       *     connection was closed
+       * @param {String} [options.reason=''] A human-readable string explaining why
+       *     the connection was closed
+       * @param {Boolean} [options.wasClean=false] Indicates whether or not the
+       *     connection was cleanly closed
+       */
+      constructor(type, options = {}) {
+        super(type);
+        this[kCode] = options.code === void 0 ? 0 : options.code;
+        this[kReason] = options.reason === void 0 ? "" : options.reason;
+        this[kWasClean] = options.wasClean === void 0 ? false : options.wasClean;
+      }
+      /**
+       * @type {Number}
+       */
+      get code() {
+        return this[kCode];
+      }
+      /**
+       * @type {String}
+       */
+      get reason() {
+        return this[kReason];
+      }
+      /**
+       * @type {Boolean}
+       */
+      get wasClean() {
+        return this[kWasClean];
+      }
+    };
+    Object.defineProperty(CloseEvent.prototype, "code", { enumerable: true });
+    Object.defineProperty(CloseEvent.prototype, "reason", { enumerable: true });
+    Object.defineProperty(CloseEvent.prototype, "wasClean", { enumerable: true });
+    var ErrorEvent = class extends Event {
+      /**
+       * Create a new `ErrorEvent`.
+       *
+       * @param {String} type The name of the event
+       * @param {Object} [options] A dictionary object that allows for setting
+       *     attributes via object members of the same name
+       * @param {*} [options.error=null] The error that generated this event
+       * @param {String} [options.message=''] The error message
+       */
+      constructor(type, options = {}) {
+        super(type);
+        this[kError] = options.error === void 0 ? null : options.error;
+        this[kMessage] = options.message === void 0 ? "" : options.message;
+      }
+      /**
+       * @type {*}
+       */
+      get error() {
+        return this[kError];
+      }
+      /**
+       * @type {String}
+       */
+      get message() {
+        return this[kMessage];
+      }
+    };
+    Object.defineProperty(ErrorEvent.prototype, "error", { enumerable: true });
+    Object.defineProperty(ErrorEvent.prototype, "message", { enumerable: true });
+    var MessageEvent = class extends Event {
+      /**
+       * Create a new `MessageEvent`.
+       *
+       * @param {String} type The name of the event
+       * @param {Object} [options] A dictionary object that allows for setting
+       *     attributes via object members of the same name
+       * @param {*} [options.data=null] The message content
+       */
+      constructor(type, options = {}) {
+        super(type);
+        this[kData] = options.data === void 0 ? null : options.data;
+      }
+      /**
+       * @type {*}
+       */
+      get data() {
+        return this[kData];
+      }
+    };
+    Object.defineProperty(MessageEvent.prototype, "data", { enumerable: true });
+    var EventTarget = {
+      /**
+       * Register an event listener.
+       *
+       * @param {String} type A string representing the event type to listen for
+       * @param {(Function|Object)} handler The listener to add
+       * @param {Object} [options] An options object specifies characteristics about
+       *     the event listener
+       * @param {Boolean} [options.once=false] A `Boolean` indicating that the
+       *     listener should be invoked at most once after being added. If `true`,
+       *     the listener would be automatically removed when invoked.
+       * @public
+       */
+      addEventListener(type, handler, options = {}) {
+        for (const listener of this.listeners(type)) {
+          if (!options[kForOnEventAttribute] && listener[kListener] === handler && !listener[kForOnEventAttribute]) {
+            return;
+          }
+        }
+        let wrapper;
+        if (type === "message") {
+          wrapper = function onMessage(data, isBinary) {
+            const event = new MessageEvent("message", {
+              data: isBinary ? data : data.toString()
+            });
+            event[kTarget] = this;
+            callListener(handler, this, event);
+          };
+        } else if (type === "close") {
+          wrapper = function onClose(code, message) {
+            const event = new CloseEvent("close", {
+              code,
+              reason: message.toString(),
+              wasClean: this._closeFrameReceived && this._closeFrameSent
+            });
+            event[kTarget] = this;
+            callListener(handler, this, event);
+          };
+        } else if (type === "error") {
+          wrapper = function onError(error) {
+            const event = new ErrorEvent("error", {
+              error,
+              message: error.message
+            });
+            event[kTarget] = this;
+            callListener(handler, this, event);
+          };
+        } else if (type === "open") {
+          wrapper = function onOpen() {
+            const event = new Event("open");
+            event[kTarget] = this;
+            callListener(handler, this, event);
+          };
+        } else {
+          return;
+        }
+        wrapper[kForOnEventAttribute] = !!options[kForOnEventAttribute];
+        wrapper[kListener] = handler;
+        if (options.once) {
+          this.once(type, wrapper);
+        } else {
+          this.on(type, wrapper);
+        }
+      },
+      /**
+       * Remove an event listener.
+       *
+       * @param {String} type A string representing the event type to remove
+       * @param {(Function|Object)} handler The listener to remove
+       * @public
+       */
+      removeEventListener(type, handler) {
+        for (const listener of this.listeners(type)) {
+          if (listener[kListener] === handler && !listener[kForOnEventAttribute]) {
+            this.removeListener(type, listener);
+            break;
+          }
+        }
+      }
+    };
+    module2.exports = {
+      CloseEvent,
+      ErrorEvent,
+      Event,
+      EventTarget,
+      MessageEvent
+    };
+    function callListener(listener, thisArg, event) {
+      if (typeof listener === "object" && listener.handleEvent) {
+        listener.handleEvent.call(listener, event);
+      } else {
+        listener.call(thisArg, event);
+      }
+    }
+  }
+});
+
+// node_modules/ws/lib/extension.js
+var require_extension = __commonJS({
+  "node_modules/ws/lib/extension.js"(exports2, module2) {
+    "use strict";
+    var { tokenChars } = require_validation();
+    function push(dest, name, elem) {
+      if (dest[name] === void 0) dest[name] = [elem];
+      else dest[name].push(elem);
+    }
+    function parse(header) {
+      const offers = /* @__PURE__ */ Object.create(null);
+      let params = /* @__PURE__ */ Object.create(null);
+      let mustUnescape = false;
+      let isEscaping = false;
+      let inQuotes = false;
+      let extensionName;
+      let paramName;
+      let start = -1;
+      let code = -1;
+      let end = -1;
+      let i = 0;
+      for (; i < header.length; i++) {
+        code = header.charCodeAt(i);
+        if (extensionName === void 0) {
+          if (end === -1 && tokenChars[code] === 1) {
+            if (start === -1) start = i;
+          } else if (i !== 0 && (code === 32 || code === 9)) {
+            if (end === -1 && start !== -1) end = i;
+          } else if (code === 59 || code === 44) {
+            if (start === -1) {
+              throw new SyntaxError(`Unexpected character at index ${i}`);
+            }
+            if (end === -1) end = i;
+            const name = header.slice(start, end);
+            if (code === 44) {
+              push(offers, name, params);
+              params = /* @__PURE__ */ Object.create(null);
+            } else {
+              extensionName = name;
+            }
+            start = end = -1;
+          } else {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+        } else if (paramName === void 0) {
+          if (end === -1 && tokenChars[code] === 1) {
+            if (start === -1) start = i;
+          } else if (code === 32 || code === 9) {
+            if (end === -1 && start !== -1) end = i;
+          } else if (code === 59 || code === 44) {
+            if (start === -1) {
+              throw new SyntaxError(`Unexpected character at index ${i}`);
+            }
+            if (end === -1) end = i;
+            push(params, header.slice(start, end), true);
+            if (code === 44) {
+              push(offers, extensionName, params);
+              params = /* @__PURE__ */ Object.create(null);
+              extensionName = void 0;
+            }
+            start = end = -1;
+          } else if (code === 61 && start !== -1 && end === -1) {
+            paramName = header.slice(start, i);
+            start = end = -1;
+          } else {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+        } else {
+          if (isEscaping) {
+            if (tokenChars[code] !== 1) {
+              throw new SyntaxError(`Unexpected character at index ${i}`);
+            }
+            if (start === -1) start = i;
+            else if (!mustUnescape) mustUnescape = true;
+            isEscaping = false;
+          } else if (inQuotes) {
+            if (tokenChars[code] === 1) {
+              if (start === -1) start = i;
+            } else if (code === 34 && start !== -1) {
+              inQuotes = false;
+              end = i;
+            } else if (code === 92) {
+              isEscaping = true;
+            } else {
+              throw new SyntaxError(`Unexpected character at index ${i}`);
+            }
+          } else if (code === 34 && header.charCodeAt(i - 1) === 61) {
+            inQuotes = true;
+          } else if (end === -1 && tokenChars[code] === 1) {
+            if (start === -1) start = i;
+          } else if (start !== -1 && (code === 32 || code === 9)) {
+            if (end === -1) end = i;
+          } else if (code === 59 || code === 44) {
+            if (start === -1) {
+              throw new SyntaxError(`Unexpected character at index ${i}`);
+            }
+            if (end === -1) end = i;
+            let value = header.slice(start, end);
+            if (mustUnescape) {
+              value = value.replace(/\\/g, "");
+              mustUnescape = false;
+            }
+            push(params, paramName, value);
+            if (code === 44) {
+              push(offers, extensionName, params);
+              params = /* @__PURE__ */ Object.create(null);
+              extensionName = void 0;
+            }
+            paramName = void 0;
+            start = end = -1;
+          } else {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+        }
+      }
+      if (start === -1 || inQuotes || code === 32 || code === 9) {
+        throw new SyntaxError("Unexpected end of input");
+      }
+      if (end === -1) end = i;
+      const token = header.slice(start, end);
+      if (extensionName === void 0) {
+        push(offers, token, params);
+      } else {
+        if (paramName === void 0) {
+          push(params, token, true);
+        } else if (mustUnescape) {
+          push(params, paramName, token.replace(/\\/g, ""));
+        } else {
+          push(params, paramName, token);
+        }
+        push(offers, extensionName, params);
+      }
+      return offers;
+    }
+    function format(extensions) {
+      return Object.keys(extensions).map((extension2) => {
+        let configurations = extensions[extension2];
+        if (!Array.isArray(configurations)) configurations = [configurations];
+        return configurations.map((params) => {
+          return [extension2].concat(
+            Object.keys(params).map((k) => {
+              let values = params[k];
+              if (!Array.isArray(values)) values = [values];
+              return values.map((v) => v === true ? k : `${k}=${v}`).join("; ");
+            })
+          ).join("; ");
+        }).join(", ");
+      }).join(", ");
+    }
+    module2.exports = { format, parse };
+  }
+});
+
+// node_modules/ws/lib/websocket.js
+var require_websocket = __commonJS({
+  "node_modules/ws/lib/websocket.js"(exports2, module2) {
+    "use strict";
+    var EventEmitter2 = require("events");
+    var https = require("https");
+    var http = require("http");
+    var net = require("net");
+    var tls = require("tls");
+    var { randomBytes, createHash } = require("crypto");
+    var { Duplex, Readable } = require("stream");
+    var { URL } = require("url");
+    var PerMessageDeflate2 = require_permessage_deflate();
+    var Receiver2 = require_receiver();
+    var Sender2 = require_sender();
+    var { isBlob } = require_validation();
+    var {
+      BINARY_TYPES,
+      CLOSE_TIMEOUT,
+      EMPTY_BUFFER,
+      GUID,
+      kForOnEventAttribute,
+      kListener,
+      kStatusCode,
+      kWebSocket,
+      NOOP
+    } = require_constants();
+    var {
+      EventTarget: { addEventListener, removeEventListener }
+    } = require_event_target();
+    var { format, parse } = require_extension();
+    var { toBuffer } = require_buffer_util();
+    var kAborted = /* @__PURE__ */ Symbol("kAborted");
+    var protocolVersions = [8, 13];
+    var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
+    var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
+    var WebSocket2 = class _WebSocket extends EventEmitter2 {
+      /**
+       * Create a new `WebSocket`.
+       *
+       * @param {(String|URL)} address The URL to which to connect
+       * @param {(String|String[])} [protocols] The subprotocols
+       * @param {Object} [options] Connection options
+       */
+      constructor(address, protocols, options) {
+        super();
+        this._binaryType = BINARY_TYPES[0];
+        this._closeCode = 1006;
+        this._closeFrameReceived = false;
+        this._closeFrameSent = false;
+        this._closeMessage = EMPTY_BUFFER;
+        this._closeTimer = null;
+        this._errorEmitted = false;
+        this._extensions = {};
+        this._paused = false;
+        this._protocol = "";
+        this._readyState = _WebSocket.CONNECTING;
+        this._receiver = null;
+        this._sender = null;
+        this._socket = null;
+        if (address !== null) {
+          this._bufferedAmount = 0;
+          this._isServer = false;
+          this._redirects = 0;
+          if (protocols === void 0) {
+            protocols = [];
+          } else if (!Array.isArray(protocols)) {
+            if (typeof protocols === "object" && protocols !== null) {
+              options = protocols;
+              protocols = [];
+            } else {
+              protocols = [protocols];
+            }
+          }
+          initAsClient(this, address, protocols, options);
+        } else {
+          this._autoPong = options.autoPong;
+          this._closeTimeout = options.closeTimeout;
+          this._isServer = true;
+        }
+      }
+      /**
+       * For historical reasons, the custom "nodebuffer" type is used by the default
+       * instead of "blob".
+       *
+       * @type {String}
+       */
+      get binaryType() {
+        return this._binaryType;
+      }
+      set binaryType(type) {
+        if (!BINARY_TYPES.includes(type)) return;
+        this._binaryType = type;
+        if (this._receiver) this._receiver._binaryType = type;
+      }
+      /**
+       * @type {Number}
+       */
+      get bufferedAmount() {
+        if (!this._socket) return this._bufferedAmount;
+        return this._socket._writableState.length + this._sender._bufferedBytes;
+      }
+      /**
+       * @type {String}
+       */
+      get extensions() {
+        return Object.keys(this._extensions).join();
+      }
+      /**
+       * @type {Boolean}
+       */
+      get isPaused() {
+        return this._paused;
+      }
+      /**
+       * @type {Function}
+       */
+      /* istanbul ignore next */
+      get onclose() {
+        return null;
+      }
+      /**
+       * @type {Function}
+       */
+      /* istanbul ignore next */
+      get onerror() {
+        return null;
+      }
+      /**
+       * @type {Function}
+       */
+      /* istanbul ignore next */
+      get onopen() {
+        return null;
+      }
+      /**
+       * @type {Function}
+       */
+      /* istanbul ignore next */
+      get onmessage() {
+        return null;
+      }
+      /**
+       * @type {String}
+       */
+      get protocol() {
+        return this._protocol;
+      }
+      /**
+       * @type {Number}
+       */
+      get readyState() {
+        return this._readyState;
+      }
+      /**
+       * @type {String}
+       */
+      get url() {
+        return this._url;
+      }
+      /**
+       * Set up the socket and the internal resources.
+       *
+       * @param {Duplex} socket The network socket between the server and client
+       * @param {Buffer} head The first packet of the upgraded stream
+       * @param {Object} options Options object
+       * @param {Boolean} [options.allowSynchronousEvents=false] Specifies whether
+       *     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+       *     multiple times in the same tick
+       * @param {Function} [options.generateMask] The function used to generate the
+       *     masking key
+       * @param {Number} [options.maxBufferedChunks=0] The maximum number of
+       *     buffered data chunks
+       * @param {Number} [options.maxFragments=0] The maximum number of message
+       *     fragments
+       * @param {Number} [options.maxPayload=0] The maximum allowed message size
+       * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+       *     not to skip UTF-8 validation for text and close messages
+       * @private
+       */
+      setSocket(socket, head, options) {
+        const receiver = new Receiver2({
+          allowSynchronousEvents: options.allowSynchronousEvents,
+          binaryType: this.binaryType,
+          extensions: this._extensions,
+          isServer: this._isServer,
+          maxBufferedChunks: options.maxBufferedChunks,
+          maxFragments: options.maxFragments,
+          maxPayload: options.maxPayload,
+          skipUTF8Validation: options.skipUTF8Validation
+        });
+        const sender = new Sender2(socket, this._extensions, options.generateMask);
+        this._receiver = receiver;
+        this._sender = sender;
+        this._socket = socket;
+        receiver[kWebSocket] = this;
+        sender[kWebSocket] = this;
+        socket[kWebSocket] = this;
+        receiver.on("conclude", receiverOnConclude);
+        receiver.on("drain", receiverOnDrain);
+        receiver.on("error", receiverOnError);
+        receiver.on("message", receiverOnMessage);
+        receiver.on("ping", receiverOnPing);
+        receiver.on("pong", receiverOnPong);
+        sender.onerror = senderOnError;
+        if (socket.setTimeout) socket.setTimeout(0);
+        if (socket.setNoDelay) socket.setNoDelay();
+        if (head.length > 0) socket.unshift(head);
+        socket.on("close", socketOnClose);
+        socket.on("data", socketOnData);
+        socket.on("end", socketOnEnd);
+        socket.on("error", socketOnError);
+        this._readyState = _WebSocket.OPEN;
+        this.emit("open");
+      }
+      /**
+       * Emit the `'close'` event.
+       *
+       * @private
+       */
+      emitClose() {
+        if (!this._socket) {
+          this._readyState = _WebSocket.CLOSED;
+          this.emit("close", this._closeCode, this._closeMessage);
+          return;
+        }
+        if (this._extensions[PerMessageDeflate2.extensionName]) {
+          this._extensions[PerMessageDeflate2.extensionName].cleanup();
+        }
+        this._receiver.removeAllListeners();
+        this._readyState = _WebSocket.CLOSED;
+        this.emit("close", this._closeCode, this._closeMessage);
+      }
+      /**
+       * Start a closing handshake.
+       *
+       *          +----------+   +-----------+   +----------+
+       *     - - -|ws.close()|-->|close frame|-->|ws.close()|- - -
+       *    |     +----------+   +-----------+   +----------+     |
+       *          +----------+   +-----------+         |
+       * CLOSING  |ws.close()|<--|close frame|<--+-----+       CLOSING
+       *          +----------+   +-----------+   |
+       *    |           |                        |   +---+        |
+       *                +------------------------+-->|fin| - - - -
+       *    |         +---+                      |   +---+
+       *     - - - - -|fin|<---------------------+
+       *              +---+
+       *
+       * @param {Number} [code] Status code explaining why the connection is closing
+       * @param {(String|Buffer)} [data] The reason why the connection is
+       *     closing
+       * @public
+       */
+      close(code, data) {
+        if (this.readyState === _WebSocket.CLOSED) return;
+        if (this.readyState === _WebSocket.CONNECTING) {
+          const msg = "WebSocket was closed before the connection was established";
+          abortHandshake(this, this._req, msg);
+          return;
+        }
+        if (this.readyState === _WebSocket.CLOSING) {
+          if (this._closeFrameSent && (this._closeFrameReceived || this._receiver._writableState.errorEmitted)) {
+            this._socket.end();
+          }
+          return;
+        }
+        this._readyState = _WebSocket.CLOSING;
+        this._sender.close(code, data, !this._isServer, (err) => {
+          if (err) return;
+          this._closeFrameSent = true;
+          if (this._closeFrameReceived || this._receiver._writableState.errorEmitted) {
+            this._socket.end();
+          }
+        });
+        setCloseTimer(this);
+      }
+      /**
+       * Pause the socket.
+       *
+       * @public
+       */
+      pause() {
+        if (this.readyState === _WebSocket.CONNECTING || this.readyState === _WebSocket.CLOSED) {
+          return;
+        }
+        this._paused = true;
+        this._socket.pause();
+      }
+      /**
+       * Send a ping.
+       *
+       * @param {*} [data] The data to send
+       * @param {Boolean} [mask] Indicates whether or not to mask `data`
+       * @param {Function} [cb] Callback which is executed when the ping is sent
+       * @public
+       */
+      ping(data, mask, cb) {
+        if (this.readyState === _WebSocket.CONNECTING) {
+          throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+        }
+        if (typeof data === "function") {
+          cb = data;
+          data = mask = void 0;
+        } else if (typeof mask === "function") {
+          cb = mask;
+          mask = void 0;
+        }
+        if (typeof data === "number") data = data.toString();
+        if (this.readyState !== _WebSocket.OPEN) {
+          sendAfterClose(this, data, cb);
+          return;
+        }
+        if (mask === void 0) mask = !this._isServer;
+        this._sender.ping(data || EMPTY_BUFFER, mask, cb);
+      }
+      /**
+       * Send a pong.
+       *
+       * @param {*} [data] The data to send
+       * @param {Boolean} [mask] Indicates whether or not to mask `data`
+       * @param {Function} [cb] Callback which is executed when the pong is sent
+       * @public
+       */
+      pong(data, mask, cb) {
+        if (this.readyState === _WebSocket.CONNECTING) {
+          throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+        }
+        if (typeof data === "function") {
+          cb = data;
+          data = mask = void 0;
+        } else if (typeof mask === "function") {
+          cb = mask;
+          mask = void 0;
+        }
+        if (typeof data === "number") data = data.toString();
+        if (this.readyState !== _WebSocket.OPEN) {
+          sendAfterClose(this, data, cb);
+          return;
+        }
+        if (mask === void 0) mask = !this._isServer;
+        this._sender.pong(data || EMPTY_BUFFER, mask, cb);
+      }
+      /**
+       * Resume the socket.
+       *
+       * @public
+       */
+      resume() {
+        if (this.readyState === _WebSocket.CONNECTING || this.readyState === _WebSocket.CLOSED) {
+          return;
+        }
+        this._paused = false;
+        if (!this._receiver._writableState.needDrain) this._socket.resume();
+      }
+      /**
+       * Send a data message.
+       *
+       * @param {*} data The message to send
+       * @param {Object} [options] Options object
+       * @param {Boolean} [options.binary] Specifies whether `data` is binary or
+       *     text
+       * @param {Boolean} [options.compress] Specifies whether or not to compress
+       *     `data`
+       * @param {Boolean} [options.fin=true] Specifies whether the fragment is the
+       *     last one
+       * @param {Boolean} [options.mask] Specifies whether or not to mask `data`
+       * @param {Function} [cb] Callback which is executed when data is written out
+       * @public
+       */
+      send(data, options, cb) {
+        if (this.readyState === _WebSocket.CONNECTING) {
+          throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+        }
+        if (typeof options === "function") {
+          cb = options;
+          options = {};
+        }
+        if (typeof data === "number") data = data.toString();
+        if (this.readyState !== _WebSocket.OPEN) {
+          sendAfterClose(this, data, cb);
+          return;
+        }
+        const opts = {
+          binary: typeof data !== "string",
+          mask: !this._isServer,
+          compress: true,
+          fin: true,
+          ...options
+        };
+        if (!this._extensions[PerMessageDeflate2.extensionName]) {
+          opts.compress = false;
+        }
+        this._sender.send(data || EMPTY_BUFFER, opts, cb);
+      }
+      /**
+       * Forcibly close the connection.
+       *
+       * @public
+       */
+      terminate() {
+        if (this.readyState === _WebSocket.CLOSED) return;
+        if (this.readyState === _WebSocket.CONNECTING) {
+          const msg = "WebSocket was closed before the connection was established";
+          abortHandshake(this, this._req, msg);
+          return;
+        }
+        if (this._socket) {
+          this._readyState = _WebSocket.CLOSING;
+          this._socket.destroy();
+        }
+      }
+    };
+    Object.defineProperty(WebSocket2, "CONNECTING", {
+      enumerable: true,
+      value: readyStates.indexOf("CONNECTING")
+    });
+    Object.defineProperty(WebSocket2.prototype, "CONNECTING", {
+      enumerable: true,
+      value: readyStates.indexOf("CONNECTING")
+    });
+    Object.defineProperty(WebSocket2, "OPEN", {
+      enumerable: true,
+      value: readyStates.indexOf("OPEN")
+    });
+    Object.defineProperty(WebSocket2.prototype, "OPEN", {
+      enumerable: true,
+      value: readyStates.indexOf("OPEN")
+    });
+    Object.defineProperty(WebSocket2, "CLOSING", {
+      enumerable: true,
+      value: readyStates.indexOf("CLOSING")
+    });
+    Object.defineProperty(WebSocket2.prototype, "CLOSING", {
+      enumerable: true,
+      value: readyStates.indexOf("CLOSING")
+    });
+    Object.defineProperty(WebSocket2, "CLOSED", {
+      enumerable: true,
+      value: readyStates.indexOf("CLOSED")
+    });
+    Object.defineProperty(WebSocket2.prototype, "CLOSED", {
+      enumerable: true,
+      value: readyStates.indexOf("CLOSED")
+    });
+    [
+      "binaryType",
+      "bufferedAmount",
+      "extensions",
+      "isPaused",
+      "protocol",
+      "readyState",
+      "url"
+    ].forEach((property) => {
+      Object.defineProperty(WebSocket2.prototype, property, { enumerable: true });
+    });
+    ["open", "error", "close", "message"].forEach((method) => {
+      Object.defineProperty(WebSocket2.prototype, `on${method}`, {
+        enumerable: true,
+        get() {
+          for (const listener of this.listeners(method)) {
+            if (listener[kForOnEventAttribute]) return listener[kListener];
+          }
+          return null;
+        },
+        set(handler) {
+          for (const listener of this.listeners(method)) {
+            if (listener[kForOnEventAttribute]) {
+              this.removeListener(method, listener);
+              break;
+            }
+          }
+          if (typeof handler !== "function") return;
+          this.addEventListener(method, handler, {
+            [kForOnEventAttribute]: true
+          });
+        }
+      });
+    });
+    WebSocket2.prototype.addEventListener = addEventListener;
+    WebSocket2.prototype.removeEventListener = removeEventListener;
+    module2.exports = WebSocket2;
+    function initAsClient(websocket, address, protocols, options) {
+      const opts = {
+        allowSynchronousEvents: true,
+        autoPong: true,
+        closeTimeout: CLOSE_TIMEOUT,
+        protocolVersion: protocolVersions[1],
+        maxBufferedChunks: 1024 * 1024,
+        maxFragments: 128 * 1024,
+        maxPayload: 100 * 1024 * 1024,
+        skipUTF8Validation: false,
+        perMessageDeflate: true,
+        followRedirects: false,
+        maxRedirects: 10,
+        ...options,
+        socketPath: void 0,
+        hostname: void 0,
+        protocol: void 0,
+        timeout: void 0,
+        method: "GET",
+        host: void 0,
+        path: void 0,
+        port: void 0
+      };
+      websocket._autoPong = opts.autoPong;
+      websocket._closeTimeout = opts.closeTimeout;
+      if (!protocolVersions.includes(opts.protocolVersion)) {
+        throw new RangeError(
+          `Unsupported protocol version: ${opts.protocolVersion} (supported versions: ${protocolVersions.join(", ")})`
+        );
+      }
+      let parsedUrl;
+      if (address instanceof URL) {
+        parsedUrl = address;
+      } else {
+        try {
+          parsedUrl = new URL(address);
+        } catch {
+          throw new SyntaxError(`Invalid URL: ${address}`);
+        }
+      }
+      if (parsedUrl.protocol === "http:") {
+        parsedUrl.protocol = "ws:";
+      } else if (parsedUrl.protocol === "https:") {
+        parsedUrl.protocol = "wss:";
+      }
+      websocket._url = parsedUrl.href;
+      const isSecure = parsedUrl.protocol === "wss:";
+      const isIpcUrl = parsedUrl.protocol === "ws+unix:";
+      let invalidUrlMessage;
+      if (parsedUrl.protocol !== "ws:" && !isSecure && !isIpcUrl) {
+        invalidUrlMessage = `The URL's protocol must be one of "ws:", "wss:", "http:", "https:", or "ws+unix:"`;
+      } else if (isIpcUrl && !parsedUrl.pathname) {
+        invalidUrlMessage = "The URL's pathname is empty";
+      } else if (parsedUrl.hash) {
+        invalidUrlMessage = "The URL contains a fragment identifier";
+      }
+      if (invalidUrlMessage) {
+        const err = new SyntaxError(invalidUrlMessage);
+        if (websocket._redirects === 0) {
+          throw err;
+        } else {
+          emitErrorAndClose(websocket, err);
+          return;
+        }
+      }
+      const defaultPort = isSecure ? 443 : 80;
+      const key = randomBytes(16).toString("base64");
+      const request = isSecure ? https.request : http.request;
+      const protocolSet = /* @__PURE__ */ new Set();
+      let perMessageDeflate;
+      opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
+      opts.defaultPort = opts.defaultPort || defaultPort;
+      opts.port = parsedUrl.port || defaultPort;
+      opts.host = parsedUrl.hostname.startsWith("[") ? parsedUrl.hostname.slice(1, -1) : parsedUrl.hostname;
+      opts.headers = {
+        ...opts.headers,
+        "Sec-WebSocket-Version": opts.protocolVersion,
+        "Sec-WebSocket-Key": key,
+        Connection: "Upgrade",
+        Upgrade: "websocket"
+      };
+      opts.path = parsedUrl.pathname + parsedUrl.search;
+      opts.timeout = opts.handshakeTimeout;
+      if (opts.perMessageDeflate) {
+        perMessageDeflate = new PerMessageDeflate2({
+          ...opts.perMessageDeflate,
+          isServer: false,
+          maxPayload: opts.maxPayload
+        });
+        opts.headers["Sec-WebSocket-Extensions"] = format({
+          [PerMessageDeflate2.extensionName]: perMessageDeflate.offer()
+        });
+      }
+      if (protocols.length) {
+        for (const protocol of protocols) {
+          if (typeof protocol !== "string" || !subprotocolRegex.test(protocol) || protocolSet.has(protocol)) {
+            throw new SyntaxError(
+              "An invalid or duplicated subprotocol was specified"
+            );
+          }
+          protocolSet.add(protocol);
+        }
+        opts.headers["Sec-WebSocket-Protocol"] = protocols.join(",");
+      }
+      if (opts.origin) {
+        if (opts.protocolVersion < 13) {
+          opts.headers["Sec-WebSocket-Origin"] = opts.origin;
+        } else {
+          opts.headers.Origin = opts.origin;
+        }
+      }
+      if (parsedUrl.username || parsedUrl.password) {
+        opts.auth = `${parsedUrl.username}:${parsedUrl.password}`;
+      }
+      if (isIpcUrl) {
+        const parts = opts.path.split(":");
+        opts.socketPath = parts[0];
+        opts.path = parts[1];
+      }
+      let req;
+      if (opts.followRedirects) {
+        if (websocket._redirects === 0) {
+          websocket._originalIpc = isIpcUrl;
+          websocket._originalSecure = isSecure;
+          websocket._originalHostOrSocketPath = isIpcUrl ? opts.socketPath : parsedUrl.host;
+          const headers = options && options.headers;
+          options = { ...options, headers: {} };
+          if (headers) {
+            for (const [key2, value] of Object.entries(headers)) {
+              options.headers[key2.toLowerCase()] = value;
+            }
+          }
+        } else if (websocket.listenerCount("redirect") === 0) {
+          const isSameHost = isIpcUrl ? websocket._originalIpc ? opts.socketPath === websocket._originalHostOrSocketPath : false : websocket._originalIpc ? false : parsedUrl.host === websocket._originalHostOrSocketPath;
+          if (!isSameHost || websocket._originalSecure && !isSecure) {
+            delete opts.headers.authorization;
+            delete opts.headers.cookie;
+            if (!isSameHost) delete opts.headers.host;
+            opts.auth = void 0;
+          }
+        }
+        if (opts.auth && !options.headers.authorization) {
+          options.headers.authorization = "Basic " + Buffer.from(opts.auth).toString("base64");
+        }
+        req = websocket._req = request(opts);
+        if (websocket._redirects) {
+          websocket.emit("redirect", websocket.url, req);
+        }
+      } else {
+        req = websocket._req = request(opts);
+      }
+      if (opts.timeout) {
+        req.on("timeout", () => {
+          abortHandshake(websocket, req, "Opening handshake has timed out");
+        });
+      }
+      req.on("error", (err) => {
+        if (req === null || req[kAborted]) return;
+        req = websocket._req = null;
+        emitErrorAndClose(websocket, err);
+      });
+      req.on("response", (res) => {
+        const location = res.headers.location;
+        const statusCode = res.statusCode;
+        if (location && opts.followRedirects && statusCode >= 300 && statusCode < 400) {
+          if (++websocket._redirects > opts.maxRedirects) {
+            abortHandshake(websocket, req, "Maximum redirects exceeded");
+            return;
+          }
+          req.abort();
+          let addr;
+          try {
+            addr = new URL(location, address);
+          } catch (e) {
+            const err = new SyntaxError(`Invalid URL: ${location}`);
+            emitErrorAndClose(websocket, err);
+            return;
+          }
+          initAsClient(websocket, addr, protocols, options);
+        } else if (!websocket.emit("unexpected-response", req, res)) {
+          abortHandshake(
+            websocket,
+            req,
+            `Unexpected server response: ${res.statusCode}`
+          );
+        }
+      });
+      req.on("upgrade", (res, socket, head) => {
+        websocket.emit("upgrade", res);
+        if (websocket.readyState !== WebSocket2.CONNECTING) return;
+        req = websocket._req = null;
+        const upgrade = res.headers.upgrade;
+        if (upgrade === void 0 || upgrade.toLowerCase() !== "websocket") {
+          abortHandshake(websocket, socket, "Invalid Upgrade header");
+          return;
+        }
+        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        if (res.headers["sec-websocket-accept"] !== digest) {
+          abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
+          return;
+        }
+        const serverProt = res.headers["sec-websocket-protocol"];
+        let protError;
+        if (serverProt !== void 0) {
+          if (!protocolSet.size) {
+            protError = "Server sent a subprotocol but none was requested";
+          } else if (!protocolSet.has(serverProt)) {
+            protError = "Server sent an invalid subprotocol";
+          }
+        } else if (protocolSet.size) {
+          protError = "Server sent no subprotocol";
+        }
+        if (protError) {
+          abortHandshake(websocket, socket, protError);
+          return;
+        }
+        if (serverProt) websocket._protocol = serverProt;
+        const secWebSocketExtensions = res.headers["sec-websocket-extensions"];
+        if (secWebSocketExtensions !== void 0) {
+          if (!perMessageDeflate) {
+            const message = "Server sent a Sec-WebSocket-Extensions header but no extension was requested";
+            abortHandshake(websocket, socket, message);
+            return;
+          }
+          let extensions;
+          try {
+            extensions = parse(secWebSocketExtensions);
+          } catch (err) {
+            const message = "Invalid Sec-WebSocket-Extensions header";
+            abortHandshake(websocket, socket, message);
+            return;
+          }
+          const extensionNames = Object.keys(extensions);
+          if (extensionNames.length !== 1 || extensionNames[0] !== PerMessageDeflate2.extensionName) {
+            const message = "Server indicated an extension that was not requested";
+            abortHandshake(websocket, socket, message);
+            return;
+          }
+          try {
+            perMessageDeflate.accept(extensions[PerMessageDeflate2.extensionName]);
+          } catch (err) {
+            const message = "Invalid Sec-WebSocket-Extensions header";
+            abortHandshake(websocket, socket, message);
+            return;
+          }
+          websocket._extensions[PerMessageDeflate2.extensionName] = perMessageDeflate;
+        }
+        websocket.setSocket(socket, head, {
+          allowSynchronousEvents: opts.allowSynchronousEvents,
+          generateMask: opts.generateMask,
+          maxBufferedChunks: opts.maxBufferedChunks,
+          maxFragments: opts.maxFragments,
+          maxPayload: opts.maxPayload,
+          skipUTF8Validation: opts.skipUTF8Validation
+        });
+      });
+      if (opts.finishRequest) {
+        opts.finishRequest(req, websocket);
+      } else {
+        req.end();
+      }
+    }
+    function emitErrorAndClose(websocket, err) {
+      websocket._readyState = WebSocket2.CLOSING;
+      websocket._errorEmitted = true;
+      websocket.emit("error", err);
+      websocket.emitClose();
+    }
+    function netConnect(options) {
+      options.path = options.socketPath;
+      return net.connect(options);
+    }
+    function tlsConnect(options) {
+      options.path = void 0;
+      if (!options.servername && options.servername !== "") {
+        options.servername = net.isIP(options.host) ? "" : options.host;
+      }
+      return tls.connect(options);
+    }
+    function abortHandshake(websocket, stream, message) {
+      websocket._readyState = WebSocket2.CLOSING;
+      const err = new Error(message);
+      Error.captureStackTrace(err, abortHandshake);
+      if (stream.setHeader) {
+        stream[kAborted] = true;
+        stream.abort();
+        if (stream.socket && !stream.socket.destroyed) {
+          stream.socket.destroy();
+        }
+        process.nextTick(emitErrorAndClose, websocket, err);
+      } else {
+        stream.destroy(err);
+        stream.once("error", websocket.emit.bind(websocket, "error"));
+        stream.once("close", websocket.emitClose.bind(websocket));
+      }
+    }
+    function sendAfterClose(websocket, data, cb) {
+      if (data) {
+        const length = isBlob(data) ? data.size : toBuffer(data).length;
+        if (websocket._socket) websocket._sender._bufferedBytes += length;
+        else websocket._bufferedAmount += length;
+      }
+      if (cb) {
+        const err = new Error(
+          `WebSocket is not open: readyState ${websocket.readyState} (${readyStates[websocket.readyState]})`
+        );
+        process.nextTick(cb, err);
+      }
+    }
+    function receiverOnConclude(code, reason) {
+      const websocket = this[kWebSocket];
+      websocket._closeFrameReceived = true;
+      websocket._closeMessage = reason;
+      websocket._closeCode = code;
+      if (websocket._socket[kWebSocket] === void 0) return;
+      websocket._socket.removeListener("data", socketOnData);
+      process.nextTick(resume, websocket._socket);
+      if (code === 1005) websocket.close();
+      else websocket.close(code, reason);
+    }
+    function receiverOnDrain() {
+      const websocket = this[kWebSocket];
+      if (!websocket.isPaused) websocket._socket.resume();
+    }
+    function receiverOnError(err) {
+      const websocket = this[kWebSocket];
+      if (websocket._socket[kWebSocket] !== void 0) {
+        websocket._socket.removeListener("data", socketOnData);
+        process.nextTick(resume, websocket._socket);
+        websocket.close(err[kStatusCode]);
+      }
+      if (!websocket._errorEmitted) {
+        websocket._errorEmitted = true;
+        websocket.emit("error", err);
+      }
+    }
+    function receiverOnFinish() {
+      this[kWebSocket].emitClose();
+    }
+    function receiverOnMessage(data, isBinary) {
+      this[kWebSocket].emit("message", data, isBinary);
+    }
+    function receiverOnPing(data) {
+      const websocket = this[kWebSocket];
+      if (websocket._autoPong) websocket.pong(data, !this._isServer, NOOP);
+      websocket.emit("ping", data);
+    }
+    function receiverOnPong(data) {
+      this[kWebSocket].emit("pong", data);
+    }
+    function resume(stream) {
+      stream.resume();
+    }
+    function senderOnError(err) {
+      const websocket = this[kWebSocket];
+      if (websocket.readyState === WebSocket2.CLOSED) return;
+      if (websocket.readyState === WebSocket2.OPEN) {
+        websocket._readyState = WebSocket2.CLOSING;
+        setCloseTimer(websocket);
+      }
+      this._socket.end();
+      if (!websocket._errorEmitted) {
+        websocket._errorEmitted = true;
+        websocket.emit("error", err);
+      }
+    }
+    function setCloseTimer(websocket) {
+      websocket._closeTimer = setTimeout(
+        websocket._socket.destroy.bind(websocket._socket),
+        websocket._closeTimeout
+      );
+    }
+    function socketOnClose() {
+      const websocket = this[kWebSocket];
+      this.removeListener("close", socketOnClose);
+      this.removeListener("data", socketOnData);
+      this.removeListener("end", socketOnEnd);
+      websocket._readyState = WebSocket2.CLOSING;
+      if (!this._readableState.endEmitted && !websocket._closeFrameReceived && !websocket._receiver._writableState.errorEmitted && this._readableState.length !== 0) {
+        const chunk = this.read(this._readableState.length);
+        websocket._receiver.write(chunk);
+      }
+      websocket._receiver.end();
+      this[kWebSocket] = void 0;
+      clearTimeout(websocket._closeTimer);
+      if (websocket._receiver._writableState.finished || websocket._receiver._writableState.errorEmitted) {
+        websocket.emitClose();
+      } else {
+        websocket._receiver.on("error", receiverOnFinish);
+        websocket._receiver.on("finish", receiverOnFinish);
+      }
+    }
+    function socketOnData(chunk) {
+      if (!this[kWebSocket]._receiver.write(chunk)) {
+        this.pause();
+      }
+    }
+    function socketOnEnd() {
+      const websocket = this[kWebSocket];
+      websocket._readyState = WebSocket2.CLOSING;
+      websocket._receiver.end();
+      this.end();
+    }
+    function socketOnError() {
+      const websocket = this[kWebSocket];
+      this.removeListener("error", socketOnError);
+      this.on("error", NOOP);
+      if (websocket) {
+        websocket._readyState = WebSocket2.CLOSING;
+        this.destroy();
+      }
+    }
+  }
+});
+
+// node_modules/ws/lib/stream.js
+var require_stream = __commonJS({
+  "node_modules/ws/lib/stream.js"(exports2, module2) {
+    "use strict";
+    var WebSocket2 = require_websocket();
+    var { Duplex } = require("stream");
+    function emitClose(stream) {
+      stream.emit("close");
+    }
+    function duplexOnEnd() {
+      if (!this.destroyed && this._writableState.finished) {
+        this.destroy();
+      }
+    }
+    function duplexOnError(err) {
+      this.removeListener("error", duplexOnError);
+      this.destroy();
+      if (this.listenerCount("error") === 0) {
+        this.emit("error", err);
+      }
+    }
+    function createWebSocketStream2(ws, options) {
+      let terminateOnDestroy = true;
+      const duplex = new Duplex({
+        ...options,
+        autoDestroy: false,
+        emitClose: false,
+        objectMode: false,
+        writableObjectMode: false
+      });
+      ws.on("message", function message(msg, isBinary) {
+        const data = !isBinary && duplex._readableState.objectMode ? msg.toString() : msg;
+        if (!duplex.push(data)) ws.pause();
+      });
+      ws.once("error", function error(err) {
+        if (duplex.destroyed) return;
+        terminateOnDestroy = false;
+        duplex.destroy(err);
+      });
+      ws.once("close", function close() {
+        if (duplex.destroyed) return;
+        duplex.push(null);
+      });
+      duplex._destroy = function(err, callback) {
+        if (ws.readyState === ws.CLOSED) {
+          callback(err);
+          process.nextTick(emitClose, duplex);
+          return;
+        }
+        let called = false;
+        ws.once("error", function error(err2) {
+          called = true;
+          callback(err2);
+        });
+        ws.once("close", function close() {
+          if (!called) callback(err);
+          process.nextTick(emitClose, duplex);
+        });
+        if (terminateOnDestroy) ws.terminate();
+      };
+      duplex._final = function(callback) {
+        if (ws.readyState === ws.CONNECTING) {
+          ws.once("open", function open() {
+            duplex._final(callback);
+          });
+          return;
+        }
+        if (ws._socket === null) return;
+        if (ws._socket._writableState.finished) {
+          callback();
+          if (duplex._readableState.endEmitted) duplex.destroy();
+        } else {
+          ws._socket.once("finish", function finish() {
+            callback();
+          });
+          ws.close();
+        }
+      };
+      duplex._read = function() {
+        if (ws.isPaused) ws.resume();
+      };
+      duplex._write = function(chunk, encoding, callback) {
+        if (ws.readyState === ws.CONNECTING) {
+          ws.once("open", function open() {
+            duplex._write(chunk, encoding, callback);
+          });
+          return;
+        }
+        ws.send(chunk, callback);
+      };
+      duplex.on("end", duplexOnEnd);
+      duplex.on("error", duplexOnError);
+      return duplex;
+    }
+    module2.exports = createWebSocketStream2;
+  }
+});
+
+// node_modules/ws/lib/subprotocol.js
+var require_subprotocol = __commonJS({
+  "node_modules/ws/lib/subprotocol.js"(exports2, module2) {
+    "use strict";
+    var { tokenChars } = require_validation();
+    function parse(header) {
+      const protocols = /* @__PURE__ */ new Set();
+      let start = -1;
+      let end = -1;
+      let i = 0;
+      for (i; i < header.length; i++) {
+        const code = header.charCodeAt(i);
+        if (end === -1 && tokenChars[code] === 1) {
+          if (start === -1) start = i;
+        } else if (i !== 0 && (code === 32 || code === 9)) {
+          if (end === -1 && start !== -1) end = i;
+        } else if (code === 44) {
+          if (start === -1) {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+          if (end === -1) end = i;
+          const protocol2 = header.slice(start, end);
+          if (protocols.has(protocol2)) {
+            throw new SyntaxError(`The "${protocol2}" subprotocol is duplicated`);
+          }
+          protocols.add(protocol2);
+          start = end = -1;
+        } else {
+          throw new SyntaxError(`Unexpected character at index ${i}`);
+        }
+      }
+      if (start === -1 || end !== -1) {
+        throw new SyntaxError("Unexpected end of input");
+      }
+      const protocol = header.slice(start, i);
+      if (protocols.has(protocol)) {
+        throw new SyntaxError(`The "${protocol}" subprotocol is duplicated`);
+      }
+      protocols.add(protocol);
+      return protocols;
+    }
+    module2.exports = { parse };
+  }
+});
+
+// node_modules/ws/lib/websocket-server.js
+var require_websocket_server = __commonJS({
+  "node_modules/ws/lib/websocket-server.js"(exports2, module2) {
+    "use strict";
+    var EventEmitter2 = require("events");
+    var http = require("http");
+    var { Duplex } = require("stream");
+    var { createHash } = require("crypto");
+    var extension2 = require_extension();
+    var PerMessageDeflate2 = require_permessage_deflate();
+    var subprotocol2 = require_subprotocol();
+    var WebSocket2 = require_websocket();
+    var { CLOSE_TIMEOUT, GUID, kWebSocket } = require_constants();
+    var keyRegex = /^[+/0-9A-Za-z]{22}==$/;
+    var RUNNING = 0;
+    var CLOSING = 1;
+    var CLOSED = 2;
+    var WebSocketServer3 = class extends EventEmitter2 {
+      /**
+       * Create a `WebSocketServer` instance.
+       *
+       * @param {Object} options Configuration options
+       * @param {Boolean} [options.allowSynchronousEvents=true] Specifies whether
+       *     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+       *     multiple times in the same tick
+       * @param {Boolean} [options.autoPong=true] Specifies whether or not to
+       *     automatically send a pong in response to a ping
+       * @param {Number} [options.backlog=511] The maximum length of the queue of
+       *     pending connections
+       * @param {Boolean} [options.clientTracking=true] Specifies whether or not to
+       *     track clients
+       * @param {Number} [options.closeTimeout=30000] Duration in milliseconds to
+       *     wait for the closing handshake to finish after `websocket.close()` is
+       *     called
+       * @param {Function} [options.handleProtocols] A hook to handle protocols
+       * @param {String} [options.host] The hostname where to bind the server
+       * @param {Number} [options.maxBufferedChunks=1048576] The maximum number of
+       *     buffered data chunks
+       * @param {Number} [options.maxFragments=131072] The maximum number of message
+       *     fragments
+       * @param {Number} [options.maxPayload=104857600] The maximum allowed message
+       *     size
+       * @param {Boolean} [options.noServer=false] Enable no server mode
+       * @param {String} [options.path] Accept only connections matching this path
+       * @param {(Boolean|Object)} [options.perMessageDeflate=false] Enable/disable
+       *     permessage-deflate
+       * @param {Number} [options.port] The port where to bind the server
+       * @param {(http.Server|https.Server)} [options.server] A pre-created HTTP/S
+       *     server to use
+       * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+       *     not to skip UTF-8 validation for text and close messages
+       * @param {Function} [options.verifyClient] A hook to reject connections
+       * @param {Function} [options.WebSocket=WebSocket] Specifies the `WebSocket`
+       *     class to use. It must be the `WebSocket` class or class that extends it
+       * @param {Function} [callback] A listener for the `listening` event
+       */
+      constructor(options, callback) {
+        super();
+        options = {
+          allowSynchronousEvents: true,
+          autoPong: true,
+          maxBufferedChunks: 1024 * 1024,
+          maxFragments: 128 * 1024,
+          maxPayload: 100 * 1024 * 1024,
+          skipUTF8Validation: false,
+          perMessageDeflate: false,
+          handleProtocols: null,
+          clientTracking: true,
+          closeTimeout: CLOSE_TIMEOUT,
+          verifyClient: null,
+          noServer: false,
+          backlog: null,
+          // use default (511 as implemented in net.js)
+          server: null,
+          host: null,
+          path: null,
+          port: null,
+          WebSocket: WebSocket2,
+          ...options
+        };
+        if (options.port == null && !options.server && !options.noServer || options.port != null && (options.server || options.noServer) || options.server && options.noServer) {
+          throw new TypeError(
+            'One and only one of the "port", "server", or "noServer" options must be specified'
+          );
+        }
+        if (options.port != null) {
+          this._server = http.createServer((req, res) => {
+            const body = http.STATUS_CODES[426];
+            res.writeHead(426, {
+              "Content-Length": body.length,
+              "Content-Type": "text/plain"
+            });
+            res.end(body);
+          });
+          this._server.listen(
+            options.port,
+            options.host,
+            options.backlog,
+            callback
+          );
+        } else if (options.server) {
+          this._server = options.server;
+        }
+        if (this._server) {
+          const emitConnection = this.emit.bind(this, "connection");
+          this._removeListeners = addListeners(this._server, {
+            listening: this.emit.bind(this, "listening"),
+            error: this.emit.bind(this, "error"),
+            upgrade: (req, socket, head) => {
+              this.handleUpgrade(req, socket, head, emitConnection);
+            }
+          });
+        }
+        if (options.perMessageDeflate === true) options.perMessageDeflate = {};
+        if (options.clientTracking) {
+          this.clients = /* @__PURE__ */ new Set();
+          this._shouldEmitClose = false;
+        }
+        this.options = options;
+        this._state = RUNNING;
+      }
+      /**
+       * Returns the bound address, the address family name, and port of the server
+       * as reported by the operating system if listening on an IP socket.
+       * If the server is listening on a pipe or UNIX domain socket, the name is
+       * returned as a string.
+       *
+       * @return {(Object|String|null)} The address of the server
+       * @public
+       */
+      address() {
+        if (this.options.noServer) {
+          throw new Error('The server is operating in "noServer" mode');
+        }
+        if (!this._server) return null;
+        return this._server.address();
+      }
+      /**
+       * Stop the server from accepting new connections and emit the `'close'` event
+       * when all existing connections are closed.
+       *
+       * @param {Function} [cb] A one-time listener for the `'close'` event
+       * @public
+       */
+      close(cb) {
+        if (this._state === CLOSED) {
+          if (cb) {
+            this.once("close", () => {
+              cb(new Error("The server is not running"));
+            });
+          }
+          process.nextTick(emitClose, this);
+          return;
+        }
+        if (cb) this.once("close", cb);
+        if (this._state === CLOSING) return;
+        this._state = CLOSING;
+        if (this.options.noServer || this.options.server) {
+          if (this._server) {
+            this._removeListeners();
+            this._removeListeners = this._server = null;
+          }
+          if (this.clients) {
+            if (!this.clients.size) {
+              process.nextTick(emitClose, this);
+            } else {
+              this._shouldEmitClose = true;
+            }
+          } else {
+            process.nextTick(emitClose, this);
+          }
+        } else {
+          const server = this._server;
+          this._removeListeners();
+          this._removeListeners = this._server = null;
+          server.close(() => {
+            emitClose(this);
+          });
+        }
+      }
+      /**
+       * See if a given request should be handled by this server instance.
+       *
+       * @param {http.IncomingMessage} req Request object to inspect
+       * @return {Boolean} `true` if the request is valid, else `false`
+       * @public
+       */
+      shouldHandle(req) {
+        if (this.options.path) {
+          const index = req.url.indexOf("?");
+          const pathname = index !== -1 ? req.url.slice(0, index) : req.url;
+          if (pathname !== this.options.path) return false;
+        }
+        return true;
+      }
+      /**
+       * Handle a HTTP Upgrade request.
+       *
+       * @param {http.IncomingMessage} req The request object
+       * @param {Duplex} socket The network socket between the server and client
+       * @param {Buffer} head The first packet of the upgraded stream
+       * @param {Function} cb Callback
+       * @public
+       */
+      handleUpgrade(req, socket, head, cb) {
+        socket.on("error", socketOnError);
+        const key = req.headers["sec-websocket-key"];
+        const upgrade = req.headers.upgrade;
+        const version = +req.headers["sec-websocket-version"];
+        if (req.method !== "GET") {
+          const message = "Invalid HTTP method";
+          abortHandshakeOrEmitwsClientError(this, req, socket, 405, message);
+          return;
+        }
+        if (upgrade === void 0 || upgrade.toLowerCase() !== "websocket") {
+          const message = "Invalid Upgrade header";
+          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+          return;
+        }
+        if (key === void 0 || !keyRegex.test(key)) {
+          const message = "Missing or invalid Sec-WebSocket-Key header";
+          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+          return;
+        }
+        if (version !== 13 && version !== 8) {
+          const message = "Missing or invalid Sec-WebSocket-Version header";
+          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message, {
+            "Sec-WebSocket-Version": "13, 8"
+          });
+          return;
+        }
+        if (!this.shouldHandle(req)) {
+          abortHandshake(socket, 400);
+          return;
+        }
+        const secWebSocketProtocol = req.headers["sec-websocket-protocol"];
+        let protocols = /* @__PURE__ */ new Set();
+        if (secWebSocketProtocol !== void 0) {
+          try {
+            protocols = subprotocol2.parse(secWebSocketProtocol);
+          } catch (err) {
+            const message = "Invalid Sec-WebSocket-Protocol header";
+            abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+            return;
+          }
+        }
+        const secWebSocketExtensions = req.headers["sec-websocket-extensions"];
+        const extensions = {};
+        if (this.options.perMessageDeflate && secWebSocketExtensions !== void 0) {
+          const perMessageDeflate = new PerMessageDeflate2({
+            ...this.options.perMessageDeflate,
+            isServer: true,
+            maxPayload: this.options.maxPayload
+          });
+          try {
+            const offers = extension2.parse(secWebSocketExtensions);
+            if (offers[PerMessageDeflate2.extensionName]) {
+              perMessageDeflate.accept(offers[PerMessageDeflate2.extensionName]);
+              extensions[PerMessageDeflate2.extensionName] = perMessageDeflate;
+            }
+          } catch (err) {
+            const message = "Invalid or unacceptable Sec-WebSocket-Extensions header";
+            abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+            return;
+          }
+        }
+        if (this.options.verifyClient) {
+          const info = {
+            origin: req.headers[`${version === 8 ? "sec-websocket-origin" : "origin"}`],
+            secure: !!(req.socket.authorized || req.socket.encrypted),
+            req
+          };
+          if (this.options.verifyClient.length === 2) {
+            this.options.verifyClient(info, (verified, code, message, headers) => {
+              if (!verified) {
+                return abortHandshake(socket, code || 401, message, headers);
+              }
+              this.completeUpgrade(
+                extensions,
+                key,
+                protocols,
+                req,
+                socket,
+                head,
+                cb
+              );
+            });
+            return;
+          }
+          if (!this.options.verifyClient(info)) return abortHandshake(socket, 401);
+        }
+        this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
+      }
+      /**
+       * Upgrade the connection to WebSocket.
+       *
+       * @param {Object} extensions The accepted extensions
+       * @param {String} key The value of the `Sec-WebSocket-Key` header
+       * @param {Set} protocols The subprotocols
+       * @param {http.IncomingMessage} req The request object
+       * @param {Duplex} socket The network socket between the server and client
+       * @param {Buffer} head The first packet of the upgraded stream
+       * @param {Function} cb Callback
+       * @throws {Error} If called more than once with the same socket
+       * @private
+       */
+      completeUpgrade(extensions, key, protocols, req, socket, head, cb) {
+        if (!socket.readable || !socket.writable) return socket.destroy();
+        if (socket[kWebSocket]) {
+          throw new Error(
+            "server.handleUpgrade() was called more than once with the same socket, possibly due to a misconfiguration"
+          );
+        }
+        if (this._state > RUNNING) return abortHandshake(socket, 503);
+        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        const headers = [
+          "HTTP/1.1 101 Switching Protocols",
+          "Upgrade: websocket",
+          "Connection: Upgrade",
+          `Sec-WebSocket-Accept: ${digest}`
+        ];
+        const ws = new this.options.WebSocket(null, void 0, this.options);
+        if (protocols.size) {
+          const protocol = this.options.handleProtocols ? this.options.handleProtocols(protocols, req) : protocols.values().next().value;
+          if (protocol) {
+            headers.push(`Sec-WebSocket-Protocol: ${protocol}`);
+            ws._protocol = protocol;
+          }
+        }
+        if (extensions[PerMessageDeflate2.extensionName]) {
+          const params = extensions[PerMessageDeflate2.extensionName].params;
+          const value = extension2.format({
+            [PerMessageDeflate2.extensionName]: [params]
+          });
+          headers.push(`Sec-WebSocket-Extensions: ${value}`);
+          ws._extensions = extensions;
+        }
+        this.emit("headers", headers, req);
+        socket.write(headers.concat("\r\n").join("\r\n"));
+        socket.removeListener("error", socketOnError);
+        ws.setSocket(socket, head, {
+          allowSynchronousEvents: this.options.allowSynchronousEvents,
+          maxBufferedChunks: this.options.maxBufferedChunks,
+          maxFragments: this.options.maxFragments,
+          maxPayload: this.options.maxPayload,
+          skipUTF8Validation: this.options.skipUTF8Validation
+        });
+        if (this.clients) {
+          this.clients.add(ws);
+          ws.on("close", () => {
+            this.clients.delete(ws);
+            if (this._shouldEmitClose && !this.clients.size) {
+              process.nextTick(emitClose, this);
+            }
+          });
+        }
+        cb(ws, req);
+      }
+    };
+    module2.exports = WebSocketServer3;
+    function addListeners(server, map) {
+      for (const event of Object.keys(map)) server.on(event, map[event]);
+      return function removeListeners() {
+        for (const event of Object.keys(map)) {
+          server.removeListener(event, map[event]);
+        }
+      };
+    }
+    function emitClose(server) {
+      server._state = CLOSED;
+      server.emit("close");
+    }
+    function socketOnError() {
+      this.destroy();
+    }
+    function abortHandshake(socket, code, message, headers) {
+      message = message || http.STATUS_CODES[code];
+      headers = {
+        Connection: "close",
+        "Content-Type": "text/html",
+        "Content-Length": Buffer.byteLength(message),
+        ...headers
+      };
+      socket.once("finish", socket.destroy);
+      socket.end(
+        `HTTP/1.1 ${code} ${http.STATUS_CODES[code]}\r
+` + Object.keys(headers).map((h) => `${h}: ${headers[h]}`).join("\r\n") + "\r\n\r\n" + message
+      );
+    }
+    function abortHandshakeOrEmitwsClientError(server, req, socket, code, message, headers) {
+      if (server.listenerCount("wsClientError")) {
+        const err = new Error(message);
+        Error.captureStackTrace(err, abortHandshakeOrEmitwsClientError);
+        server.emit("wsClientError", err, socket, req);
+      } else {
+        abortHandshake(socket, code, message, headers);
+      }
+    }
+  }
+});
+
+// src/extension.ts
+var extension_exports = {};
+__export(extension_exports, {
+  activate: () => activate,
+  deactivate: () => deactivate
+});
+module.exports = __toCommonJS(extension_exports);
+var vscode6 = __toESM(require("vscode"));
+
+// node_modules/ws/wrapper.mjs
+var import_stream = __toESM(require_stream(), 1);
+var import_extension = __toESM(require_extension(), 1);
+var import_permessage_deflate = __toESM(require_permessage_deflate(), 1);
+var import_receiver = __toESM(require_receiver(), 1);
+var import_sender = __toESM(require_sender(), 1);
+var import_subprotocol = __toESM(require_subprotocol(), 1);
+var import_websocket = __toESM(require_websocket(), 1);
+var import_websocket_server = __toESM(require_websocket_server(), 1);
+
+// src/server/WebSocketServer.ts
+var import_events = require("events");
+var EADDRINUSE_RETRY_ATTEMPTS = 5;
+var EADDRINUSE_RETRY_DELAY_MS = 200;
+var WebSocketServer2 = class extends import_events.EventEmitter {
+  server = null;
+  client = null;
+  _state = "stopped";
+  get state() {
+    return this._state;
+  }
+  get isConnected() {
+    return this.client !== null && this.client.readyState === import_websocket.default.OPEN;
+  }
+  async start(port) {
+    if (this.server) {
+      await this.stop();
+    }
+    let lastErr;
+    for (let attempt = 1; attempt <= EADDRINUSE_RETRY_ATTEMPTS; attempt++) {
+      try {
+        await this.startOnce(port);
+        return;
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+        const isAddrInUse = /already in use/.test(lastErr.message);
+        if (!isAddrInUse || attempt === EADDRINUSE_RETRY_ATTEMPTS) {
+          throw lastErr;
+        }
+        await delay(EADDRINUSE_RETRY_DELAY_MS);
+      }
+    }
+    throw lastErr ?? new Error("start() failed");
+  }
+  startOnce(port) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      this.server = new import_websocket_server.default({ port, host: "127.0.0.1" });
+      this.server.on("listening", () => {
+        settled = true;
+        this.setState("waiting");
+        resolve();
+      });
+      this.server.on("error", (err) => {
+        if (!settled) {
+          this.server = null;
+          settled = true;
+          this.setState("error");
+          if (err.code === "EADDRINUSE") {
+            reject(new Error(`Port ${port} is already in use`));
+          } else {
+            reject(err);
+          }
+        } else {
+          this.setState("error");
+          this.emit("error", err);
+        }
+      });
+      this.server.on("connection", (ws) => {
+        if (this.client) {
+          const old = this.client;
+          this.client = null;
+          this.emit("disconnected");
+          old.close();
+        }
+        this.client = ws;
+        this.setState("connected");
+        this.emit("connected");
+        ws.on("message", (data) => {
+          let parsed;
+          try {
+            parsed = JSON.parse(data.toString());
+          } catch {
+            this.emit("error", new Error("Failed to parse message: invalid JSON"));
+            return;
+          }
+          if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+            const got = Array.isArray(parsed) ? "array" : parsed === null ? "null" : typeof parsed;
+            this.emit("error", new Error(`Failed to parse message: expected JSON object, got ${got}`));
+            return;
+          }
+          this.emit("message", parsed);
+        });
+        ws.on("close", () => {
+          if (this.client === ws) {
+            this.client = null;
+            this.setState(this.server ? "waiting" : "stopped");
+            this.emit("disconnected");
+          }
+        });
+        ws.on("error", (err) => {
+          if (this.client === ws) {
+            this.client = null;
+            this.setState(this.server ? "waiting" : "stopped");
+            this.emit("disconnected");
+          }
+          this.emit("error", err);
+        });
+      });
+    });
+  }
+  stop() {
+    return new Promise((resolve) => {
+      if (this.client) {
+        this.client.close();
+        this.client = null;
+        this.emit("disconnected");
+      }
+      if (this.server) {
+        this.server.close(() => {
+          this.server = null;
+          this.setState("stopped");
+          resolve();
+        });
+      } else {
+        this.setState("stopped");
+        resolve();
+      }
+    });
+  }
+  send(data) {
+    if (this.client && this.client.readyState === import_websocket.default.OPEN) {
+      this.client.send(data);
+    } else {
+      throw new Error("No active Bitburner connection");
+    }
+  }
+  setState(state) {
+    this._state = state;
+    this.emit("stateChanged", state);
+  }
+};
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// src/server/JsonRpcClient.ts
+var JsonRpcClient = class {
+  constructor(server, timeout = 1e4) {
+    this.server = server;
+    this.timeout = timeout;
+    this.onMessage = (msg) => this.handleMessage(msg);
+    this.onDisconnected = () => this.rejectAllPending("Bitburner disconnected");
+    this.server.on("message", this.onMessage);
+    this.server.on("disconnected", this.onDisconnected);
+  }
+  server;
+  nextId = 1;
+  pending = /* @__PURE__ */ new Map();
+  timeout;
+  onMessage;
+  onDisconnected;
+  request(method, params) {
+    return new Promise((resolve, reject) => {
+      if (!this.server.isConnected) {
+        reject(new Error("Not connected to Bitburner"));
+        return;
+      }
+      const id = this.nextId++;
+      const request = {
+        jsonrpc: "2.0",
+        id,
+        method,
+        params
+      };
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Request "${method}" timed out after ${this.timeout}ms`));
+      }, this.timeout);
+      this.pending.set(id, { resolve, reject, timer });
+      try {
+        this.server.send(JSON.stringify(request));
+      } catch (err) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+  }
+  handleMessage(msg) {
+    if (!isPlainObject(msg)) {
+      return;
+    }
+    const id = msg.id;
+    if (typeof id !== "number") {
+      return;
+    }
+    const pending = this.pending.get(id);
+    if (!pending) {
+      return;
+    }
+    this.pending.delete(id);
+    clearTimeout(pending.timer);
+    const errorField = msg.error;
+    if (errorField !== void 0 && errorField !== null) {
+      const message = isPlainObject(errorField) && typeof errorField.message === "string" ? errorField.message : `RPC error with malformed shape: ${safeStringify(errorField)}`;
+      pending.reject(new Error(message));
+      return;
+    }
+    pending.resolve(msg.result);
+  }
+  dispose() {
+    this.server.off("message", this.onMessage);
+    this.server.off("disconnected", this.onDisconnected);
+    this.rejectAllPending("Client disposed");
+  }
+  rejectAllPending(reason) {
+    if (this.pending.size === 0) {
+      return;
+    }
+    const entries = Array.from(this.pending.values());
+    this.pending.clear();
+    for (const entry of entries) {
+      clearTimeout(entry.timer);
+      entry.reject(new Error(reason));
+    }
+  }
+};
+function isPlainObject(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function safeStringify(v) {
+  try {
+    return JSON.stringify(v) ?? String(v);
+  } catch {
+    return String(v);
+  }
+}
+
+// src/api/BitburnerApi.ts
+var BitburnerApi = class {
+  constructor(rpc, defaultServer = "home") {
+    this.rpc = rpc;
+    this.defaultServer = defaultServer;
+  }
+  rpc;
+  defaultServer;
+  async pushFile(filename, content, server) {
+    const params = {
+      filename,
+      content,
+      server: server ?? this.defaultServer
+    };
+    return this.rpc.request("pushFile", params);
+  }
+  async getFile(filename, server) {
+    const params = {
+      filename,
+      server: server ?? this.defaultServer
+    };
+    return this.rpc.request("getFile", params);
+  }
+  async getFileNames(server) {
+    const params = {
+      server: server ?? this.defaultServer
+    };
+    return this.rpc.request("getFileNames", params);
+  }
+  async getAllFiles() {
+    return this.rpc.request("getAllFiles");
+  }
+  async getDefinitionFile() {
+    return this.rpc.request("getDefinitionFile");
+  }
+};
+
+// src/config/Configuration.ts
+var vscode = __toESM(require("vscode"));
+var SECTION = "bitburnerSync";
+var Configuration = class {
+  get config() {
+    return vscode.workspace.getConfiguration(SECTION);
+  }
+  get port() {
+    return this.config.get("port", 12525);
+  }
+  get autoSync() {
+    return this.config.get("autoSync", true);
+  }
+  get targetServer() {
+    return this.config.get("targetServer", "home");
+  }
+  get fileExtensions() {
+    const inspected = this.config.inspect("fileExtensions");
+    const userSet = inspected?.globalValue !== void 0 || inspected?.workspaceValue !== void 0 || inspected?.workspaceFolderValue !== void 0 || inspected?.globalLanguageValue !== void 0 || inspected?.workspaceLanguageValue !== void 0 || inspected?.workspaceFolderLanguageValue !== void 0 || inspected?.defaultLanguageValue !== void 0;
+    const raw = userSet ? this.config.get("fileExtensions", []) ?? [] : FILE_EXTENSION_DEFAULTS.slice();
+    return raw.map((e) => e.trim().toLowerCase()).map((e) => e.replace(/^\.+/, "")).filter((e) => e.length > 0).map((e) => `.${e}`);
+  }
+  get showNotifications() {
+    return this.config.get("showNotifications", true);
+  }
+  get autoStart() {
+    return this.config.get("autoStart", false);
+  }
+  get autoDownloadDefinitions() {
+    return this.config.get("autoDownloadDefinitions", true);
+  }
+  get syncDirectory() {
+    const normalized = this.normalizedSyncDirectory();
+    if (isUnsafeSyncDirectory(normalized)) {
+      return "";
+    }
+    return normalized;
+  }
+  syncDirectoryError() {
+    const raw = this.config.get("syncDirectory", "");
+    if (!raw) {
+      return null;
+    }
+    const normalized = this.normalizedSyncDirectory();
+    if (isUnsafeSyncDirectory(normalized)) {
+      return `bitburnerSync.syncDirectory has been ignored because it would escape the workspace: ${JSON.stringify(raw)}. Falling back to the workspace root.`;
+    }
+    return null;
+  }
+  normalizedSyncDirectory() {
+    const raw = this.config.get("syncDirectory", "");
+    return raw.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
+  }
+  get fileGlob() {
+    const exts = this.fileExtensions.map((e) => e.replace(".", ""));
+    if (exts.length === 0) {
+      return "__bitburnerSync_no_extensions_configured__";
+    }
+    const prefix = this.syncDirectory ? `${this.syncDirectory}/` : "";
+    return `${prefix}**/*.{${exts.join(",")}}`;
+  }
+  get exclude() {
+    const raw = this.config.get("exclude", []);
+    return raw.map((p) => p.trim().replace(/\\/g, "/")).filter((p) => p.length > 0);
+  }
+};
+var FILE_EXTENSION_DEFAULTS = [
+  ".js",
+  ".ts",
+  ".jsx",
+  ".tsx",
+  ".txt",
+  ".json",
+  ".css",
+  ".py"
+];
+function isUnsafeSyncDirectory(normalized) {
+  if (!normalized) {
+    return false;
+  }
+  if (normalized.split("/").some((seg) => seg === "..")) {
+    return true;
+  }
+  if (/^[A-Za-z]:/.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+// src/sync/SyncEngine.ts
+var path3 = __toESM(require("path"));
+var vscode3 = __toESM(require("vscode"));
+
+// node_modules/brace-expansion/node_modules/balanced-match/dist/esm/index.js
+var balanced = (a, b, str) => {
+  const ma = a instanceof RegExp ? maybeMatch(a, str) : a;
+  const mb = b instanceof RegExp ? maybeMatch(b, str) : b;
+  const r = ma !== null && mb != null && range(ma, mb, str);
+  return r && {
+    start: r[0],
+    end: r[1],
+    pre: str.slice(0, r[0]),
+    body: str.slice(r[0] + ma.length, r[1]),
+    post: str.slice(r[1] + mb.length)
+  };
+};
+var maybeMatch = (reg, str) => {
+  const m = str.match(reg);
+  return m ? m[0] : null;
+};
+var range = (a, b, str) => {
+  let begs, beg, left, right = void 0, result;
+  let ai = str.indexOf(a);
+  let bi = str.indexOf(b, ai + 1);
+  let i = ai;
+  if (ai >= 0 && bi > 0) {
+    if (a === b) {
+      return [ai, bi];
+    }
+    begs = [];
+    left = str.length;
+    while (i >= 0 && !result) {
+      if (i === ai) {
+        begs.push(i);
+        ai = str.indexOf(a, i + 1);
+      } else if (begs.length === 1) {
+        const r = begs.pop();
+        if (r !== void 0)
+          result = [r, bi];
+      } else {
+        beg = begs.pop();
+        if (beg !== void 0 && beg < left) {
+          left = beg;
+          right = bi;
+        }
+        bi = str.indexOf(b, i + 1);
+      }
+      i = ai < bi && ai >= 0 ? ai : bi;
+    }
+    if (begs.length && right !== void 0) {
+      result = [left, right];
+    }
+  }
+  return result;
+};
+
+// node_modules/brace-expansion/dist/esm/index.js
+var escSlash = "\0SLASH" + Math.random() + "\0";
+var escOpen = "\0OPEN" + Math.random() + "\0";
+var escClose = "\0CLOSE" + Math.random() + "\0";
+var escComma = "\0COMMA" + Math.random() + "\0";
+var escPeriod = "\0PERIOD" + Math.random() + "\0";
+var escSlashPattern = new RegExp(escSlash, "g");
+var escOpenPattern = new RegExp(escOpen, "g");
+var escClosePattern = new RegExp(escClose, "g");
+var escCommaPattern = new RegExp(escComma, "g");
+var escPeriodPattern = new RegExp(escPeriod, "g");
+var slashPattern = /\\\\/g;
+var openPattern = /\\{/g;
+var closePattern = /\\}/g;
+var commaPattern = /\\,/g;
+var periodPattern = /\\\./g;
+var EXPANSION_MAX = 1e5;
+function numeric(str) {
+  return !isNaN(str) ? parseInt(str, 10) : str.charCodeAt(0);
+}
+function escapeBraces(str) {
+  return str.replace(slashPattern, escSlash).replace(openPattern, escOpen).replace(closePattern, escClose).replace(commaPattern, escComma).replace(periodPattern, escPeriod);
+}
+function unescapeBraces(str) {
+  return str.replace(escSlashPattern, "\\").replace(escOpenPattern, "{").replace(escClosePattern, "}").replace(escCommaPattern, ",").replace(escPeriodPattern, ".");
+}
+function parseCommaParts(str) {
+  if (!str) {
+    return [""];
+  }
+  const parts = [];
+  const m = balanced("{", "}", str);
+  if (!m) {
+    return str.split(",");
+  }
+  const { pre, body, post } = m;
+  const p = pre.split(",");
+  p[p.length - 1] += "{" + body + "}";
+  const postParts = parseCommaParts(post);
+  if (post.length) {
+    ;
+    p[p.length - 1] += postParts.shift();
+    p.push.apply(p, postParts);
+  }
+  parts.push.apply(parts, p);
+  return parts;
+}
+function expand(str, options = {}) {
+  if (!str) {
+    return [];
+  }
+  const { max = EXPANSION_MAX } = options;
+  if (str.slice(0, 2) === "{}") {
+    str = "\\{\\}" + str.slice(2);
+  }
+  return expand_(escapeBraces(str), max, true).map(unescapeBraces);
+}
+function embrace(str) {
+  return "{" + str + "}";
+}
+function isPadded(el) {
+  return /^-?0\d/.test(el);
+}
+function lte(i, y) {
+  return i <= y;
+}
+function gte(i, y) {
+  return i >= y;
+}
+function expand_(str, max, isTop) {
+  const expansions = [];
+  const m = balanced("{", "}", str);
+  if (!m)
+    return [str];
+  const pre = m.pre;
+  const post = m.post.length ? expand_(m.post, max, false) : [""];
+  if (/\$$/.test(m.pre)) {
+    for (let k = 0; k < post.length && k < max; k++) {
+      const expansion = pre + "{" + m.body + "}" + post[k];
+      expansions.push(expansion);
+    }
+  } else {
+    const isNumericSequence = /^-?\d+\.\.-?\d+(?:\.\.-?\d+)?$/.test(m.body);
+    const isAlphaSequence = /^[a-zA-Z]\.\.[a-zA-Z](?:\.\.-?\d+)?$/.test(m.body);
+    const isSequence = isNumericSequence || isAlphaSequence;
+    const isOptions = m.body.indexOf(",") >= 0;
+    if (!isSequence && !isOptions) {
+      if (m.post.match(/,(?!,).*\}/)) {
+        str = m.pre + "{" + m.body + escClose + m.post;
+        return expand_(str, max, true);
+      }
+      return [str];
+    }
+    let n;
+    if (isSequence) {
+      n = m.body.split(/\.\./);
+    } else {
+      n = parseCommaParts(m.body);
+      if (n.length === 1 && n[0] !== void 0) {
+        n = expand_(n[0], max, false).map(embrace);
+        if (n.length === 1) {
+          return post.map((p) => m.pre + n[0] + p);
+        }
+      }
+    }
+    let N;
+    if (isSequence && n[0] !== void 0 && n[1] !== void 0) {
+      const x = numeric(n[0]);
+      const y = numeric(n[1]);
+      const width = Math.max(n[0].length, n[1].length);
+      let incr = n.length === 3 && n[2] !== void 0 ? Math.max(Math.abs(numeric(n[2])), 1) : 1;
+      let test = lte;
+      const reverse = y < x;
+      if (reverse) {
+        incr *= -1;
+        test = gte;
+      }
+      const pad = n.some(isPadded);
+      N = [];
+      for (let i = x; test(i, y) && N.length < max; i += incr) {
+        let c;
+        if (isAlphaSequence) {
+          c = String.fromCharCode(i);
+          if (c === "\\") {
+            c = "";
+          }
+        } else {
+          c = String(i);
+          if (pad) {
+            const need = width - c.length;
+            if (need > 0) {
+              const z = new Array(need + 1).join("0");
+              if (i < 0) {
+                c = "-" + z + c.slice(1);
+              } else {
+                c = z + c;
+              }
+            }
+          }
+        }
+        N.push(c);
+      }
+    } else {
+      N = [];
+      for (let j = 0; j < n.length; j++) {
+        N.push.apply(N, expand_(n[j], max, false));
+      }
+    }
+    for (let j = 0; j < N.length; j++) {
+      for (let k = 0; k < post.length && expansions.length < max; k++) {
+        const expansion = pre + N[j] + post[k];
+        if (!isTop || isSequence || expansion) {
+          expansions.push(expansion);
+        }
+      }
+    }
+  }
+  return expansions;
+}
+
+// node_modules/minimatch/dist/esm/assert-valid-pattern.js
+var MAX_PATTERN_LENGTH = 1024 * 64;
+var assertValidPattern = (pattern) => {
+  if (typeof pattern !== "string") {
+    throw new TypeError("invalid pattern");
+  }
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    throw new TypeError("pattern is too long");
+  }
+};
+
+// node_modules/minimatch/dist/esm/brace-expressions.js
+var posixClasses = {
+  "[:alnum:]": ["\\p{L}\\p{Nl}\\p{Nd}", true],
+  "[:alpha:]": ["\\p{L}\\p{Nl}", true],
+  "[:ascii:]": ["\\x00-\\x7f", false],
+  "[:blank:]": ["\\p{Zs}\\t", true],
+  "[:cntrl:]": ["\\p{Cc}", true],
+  "[:digit:]": ["\\p{Nd}", true],
+  "[:graph:]": ["\\p{Z}\\p{C}", true, true],
+  "[:lower:]": ["\\p{Ll}", true],
+  "[:print:]": ["\\p{C}", true],
+  "[:punct:]": ["\\p{P}", true],
+  "[:space:]": ["\\p{Z}\\t\\r\\n\\v\\f", true],
+  "[:upper:]": ["\\p{Lu}", true],
+  "[:word:]": ["\\p{L}\\p{Nl}\\p{Nd}\\p{Pc}", true],
+  "[:xdigit:]": ["A-Fa-f0-9", false]
+};
+var braceEscape = (s) => s.replace(/[[\]\\-]/g, "\\$&");
+var regexpEscape = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+var rangesToString = (ranges) => ranges.join("");
+var parseClass = (glob, position) => {
+  const pos = position;
+  if (glob.charAt(pos) !== "[") {
+    throw new Error("not in a brace expression");
+  }
+  const ranges = [];
+  const negs = [];
+  let i = pos + 1;
+  let sawStart = false;
+  let uflag = false;
+  let escaping = false;
+  let negate = false;
+  let endPos = pos;
+  let rangeStart = "";
+  WHILE: while (i < glob.length) {
+    const c = glob.charAt(i);
+    if ((c === "!" || c === "^") && i === pos + 1) {
+      negate = true;
+      i++;
+      continue;
+    }
+    if (c === "]" && sawStart && !escaping) {
+      endPos = i + 1;
+      break;
+    }
+    sawStart = true;
+    if (c === "\\") {
+      if (!escaping) {
+        escaping = true;
+        i++;
+        continue;
+      }
+    }
+    if (c === "[" && !escaping) {
+      for (const [cls, [unip, u, neg]] of Object.entries(posixClasses)) {
+        if (glob.startsWith(cls, i)) {
+          if (rangeStart) {
+            return ["$.", false, glob.length - pos, true];
+          }
+          i += cls.length;
+          if (neg)
+            negs.push(unip);
+          else
+            ranges.push(unip);
+          uflag = uflag || u;
+          continue WHILE;
+        }
+      }
+    }
+    escaping = false;
+    if (rangeStart) {
+      if (c > rangeStart) {
+        ranges.push(braceEscape(rangeStart) + "-" + braceEscape(c));
+      } else if (c === rangeStart) {
+        ranges.push(braceEscape(c));
+      }
+      rangeStart = "";
+      i++;
+      continue;
+    }
+    if (glob.startsWith("-]", i + 1)) {
+      ranges.push(braceEscape(c + "-"));
+      i += 2;
+      continue;
+    }
+    if (glob.startsWith("-", i + 1)) {
+      rangeStart = c;
+      i += 2;
+      continue;
+    }
+    ranges.push(braceEscape(c));
+    i++;
+  }
+  if (endPos < i) {
+    return ["", false, 0, false];
+  }
+  if (!ranges.length && !negs.length) {
+    return ["$.", false, glob.length - pos, true];
+  }
+  if (negs.length === 0 && ranges.length === 1 && /^\\?.$/.test(ranges[0]) && !negate) {
+    const r = ranges[0].length === 2 ? ranges[0].slice(-1) : ranges[0];
+    return [regexpEscape(r), false, endPos - pos, false];
+  }
+  const sranges = "[" + (negate ? "^" : "") + rangesToString(ranges) + "]";
+  const snegs = "[" + (negate ? "" : "^") + rangesToString(negs) + "]";
+  const comb = ranges.length && negs.length ? "(" + sranges + "|" + snegs + ")" : ranges.length ? sranges : snegs;
+  return [comb, uflag, endPos - pos, true];
+};
+
+// node_modules/minimatch/dist/esm/unescape.js
+var unescape = (s, { windowsPathsNoEscape = false, magicalBraces = true } = {}) => {
+  if (magicalBraces) {
+    return windowsPathsNoEscape ? s.replace(/\[([^/\\])\]/g, "$1") : s.replace(/((?!\\).|^)\[([^/\\])\]/g, "$1$2").replace(/\\([^/])/g, "$1");
+  }
+  return windowsPathsNoEscape ? s.replace(/\[([^/\\{}])\]/g, "$1") : s.replace(/((?!\\).|^)\[([^/\\{}])\]/g, "$1$2").replace(/\\([^/{}])/g, "$1");
+};
+
+// node_modules/minimatch/dist/esm/ast.js
+var _a;
+var types = /* @__PURE__ */ new Set(["!", "?", "+", "*", "@"]);
+var isExtglobType = (c) => types.has(c);
+var isExtglobAST = (c) => isExtglobType(c.type);
+var adoptionMap = /* @__PURE__ */ new Map([
+  ["!", ["@"]],
+  ["?", ["?", "@"]],
+  ["@", ["@"]],
+  ["*", ["*", "+", "?", "@"]],
+  ["+", ["+", "@"]]
+]);
+var adoptionWithSpaceMap = /* @__PURE__ */ new Map([
+  ["!", ["?"]],
+  ["@", ["?"]],
+  ["+", ["?", "*"]]
+]);
+var adoptionAnyMap = /* @__PURE__ */ new Map([
+  ["!", ["?", "@"]],
+  ["?", ["?", "@"]],
+  ["@", ["?", "@"]],
+  ["*", ["*", "+", "?", "@"]],
+  ["+", ["+", "@", "?", "*"]]
+]);
+var usurpMap = /* @__PURE__ */ new Map([
+  ["!", /* @__PURE__ */ new Map([["!", "@"]])],
+  [
+    "?",
+    /* @__PURE__ */ new Map([
+      ["*", "*"],
+      ["+", "*"]
+    ])
+  ],
+  [
+    "@",
+    /* @__PURE__ */ new Map([
+      ["!", "!"],
+      ["?", "?"],
+      ["@", "@"],
+      ["*", "*"],
+      ["+", "+"]
+    ])
+  ],
+  [
+    "+",
+    /* @__PURE__ */ new Map([
+      ["?", "*"],
+      ["*", "*"]
+    ])
+  ]
+]);
+var startNoTraversal = "(?!(?:^|/)\\.\\.?(?:$|/))";
+var startNoDot = "(?!\\.)";
+var addPatternStart = /* @__PURE__ */ new Set(["[", "."]);
+var justDots = /* @__PURE__ */ new Set(["..", "."]);
+var reSpecials = new Set("().*{}+?[]^$\\!");
+var regExpEscape = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+var qmark = "[^/]";
+var star = qmark + "*?";
+var starNoEmpty = qmark + "+?";
+var ID = 0;
+var AST = class {
+  type;
+  #root;
+  #hasMagic;
+  #uflag = false;
+  #parts = [];
+  #parent;
+  #parentIndex;
+  #negs;
+  #filledNegs = false;
+  #options;
+  #toString;
+  // set to true if it's an extglob with no children
+  // (which really means one child of '')
+  #emptyExt = false;
+  id = ++ID;
+  get depth() {
+    return (this.#parent?.depth ?? -1) + 1;
+  }
+  [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
+    return {
+      "@@type": "AST",
+      id: this.id,
+      type: this.type,
+      root: this.#root.id,
+      parent: this.#parent?.id,
+      depth: this.depth,
+      partsLength: this.#parts.length,
+      parts: this.#parts
+    };
+  }
+  constructor(type, parent, options = {}) {
+    this.type = type;
+    if (type)
+      this.#hasMagic = true;
+    this.#parent = parent;
+    this.#root = this.#parent ? this.#parent.#root : this;
+    this.#options = this.#root === this ? options : this.#root.#options;
+    this.#negs = this.#root === this ? [] : this.#root.#negs;
+    if (type === "!" && !this.#root.#filledNegs)
+      this.#negs.push(this);
+    this.#parentIndex = this.#parent ? this.#parent.#parts.length : 0;
+  }
+  get hasMagic() {
+    if (this.#hasMagic !== void 0)
+      return this.#hasMagic;
+    for (const p of this.#parts) {
+      if (typeof p === "string")
+        continue;
+      if (p.type || p.hasMagic)
+        return this.#hasMagic = true;
+    }
+    return this.#hasMagic;
+  }
+  // reconstructs the pattern
+  toString() {
+    return this.#toString !== void 0 ? this.#toString : !this.type ? this.#toString = this.#parts.map((p) => String(p)).join("") : this.#toString = this.type + "(" + this.#parts.map((p) => String(p)).join("|") + ")";
+  }
+  #fillNegs() {
+    if (this !== this.#root)
+      throw new Error("should only call on root");
+    if (this.#filledNegs)
+      return this;
+    this.toString();
+    this.#filledNegs = true;
+    let n;
+    while (n = this.#negs.pop()) {
+      if (n.type !== "!")
+        continue;
+      let p = n;
+      let pp = p.#parent;
+      while (pp) {
+        for (let i = p.#parentIndex + 1; !pp.type && i < pp.#parts.length; i++) {
+          for (const part of n.#parts) {
+            if (typeof part === "string") {
+              throw new Error("string part in extglob AST??");
+            }
+            part.copyIn(pp.#parts[i]);
+          }
+        }
+        p = pp;
+        pp = p.#parent;
+      }
+    }
+    return this;
+  }
+  push(...parts) {
+    for (const p of parts) {
+      if (p === "")
+        continue;
+      if (typeof p !== "string" && !(p instanceof _a && p.#parent === this)) {
+        throw new Error("invalid part: " + p);
+      }
+      this.#parts.push(p);
+    }
+  }
+  toJSON() {
+    const ret = this.type === null ? this.#parts.slice().map((p) => typeof p === "string" ? p : p.toJSON()) : [this.type, ...this.#parts.map((p) => p.toJSON())];
+    if (this.isStart() && !this.type)
+      ret.unshift([]);
+    if (this.isEnd() && (this === this.#root || this.#root.#filledNegs && this.#parent?.type === "!")) {
+      ret.push({});
+    }
+    return ret;
+  }
+  isStart() {
+    if (this.#root === this)
+      return true;
+    if (!this.#parent?.isStart())
+      return false;
+    if (this.#parentIndex === 0)
+      return true;
+    const p = this.#parent;
+    for (let i = 0; i < this.#parentIndex; i++) {
+      const pp = p.#parts[i];
+      if (!(pp instanceof _a && pp.type === "!")) {
+        return false;
+      }
+    }
+    return true;
+  }
+  isEnd() {
+    if (this.#root === this)
+      return true;
+    if (this.#parent?.type === "!")
+      return true;
+    if (!this.#parent?.isEnd())
+      return false;
+    if (!this.type)
+      return this.#parent?.isEnd();
+    const pl = this.#parent ? this.#parent.#parts.length : 0;
+    return this.#parentIndex === pl - 1;
+  }
+  copyIn(part) {
+    if (typeof part === "string")
+      this.push(part);
+    else
+      this.push(part.clone(this));
+  }
+  clone(parent) {
+    const c = new _a(this.type, parent);
+    for (const p of this.#parts) {
+      c.copyIn(p);
+    }
+    return c;
+  }
+  static #parseAST(str, ast, pos, opt, extDepth) {
+    const maxDepth = opt.maxExtglobRecursion ?? 2;
+    let escaping = false;
+    let inBrace = false;
+    let braceStart = -1;
+    let braceNeg = false;
+    if (ast.type === null) {
+      let i2 = pos;
+      let acc2 = "";
+      while (i2 < str.length) {
+        const c = str.charAt(i2++);
+        if (escaping || c === "\\") {
+          escaping = !escaping;
+          acc2 += c;
+          continue;
+        }
+        if (inBrace) {
+          if (i2 === braceStart + 1) {
+            if (c === "^" || c === "!") {
+              braceNeg = true;
+            }
+          } else if (c === "]" && !(i2 === braceStart + 2 && braceNeg)) {
+            inBrace = false;
+          }
+          acc2 += c;
+          continue;
+        } else if (c === "[") {
+          inBrace = true;
+          braceStart = i2;
+          braceNeg = false;
+          acc2 += c;
+          continue;
+        }
+        const doRecurse = !opt.noext && isExtglobType(c) && str.charAt(i2) === "(" && extDepth <= maxDepth;
+        if (doRecurse) {
+          ast.push(acc2);
+          acc2 = "";
+          const ext2 = new _a(c, ast);
+          i2 = _a.#parseAST(str, ext2, i2, opt, extDepth + 1);
+          ast.push(ext2);
+          continue;
+        }
+        acc2 += c;
+      }
+      ast.push(acc2);
+      return i2;
+    }
+    let i = pos + 1;
+    let part = new _a(null, ast);
+    const parts = [];
+    let acc = "";
+    while (i < str.length) {
+      const c = str.charAt(i++);
+      if (escaping || c === "\\") {
+        escaping = !escaping;
+        acc += c;
+        continue;
+      }
+      if (inBrace) {
+        if (i === braceStart + 1) {
+          if (c === "^" || c === "!") {
+            braceNeg = true;
+          }
+        } else if (c === "]" && !(i === braceStart + 2 && braceNeg)) {
+          inBrace = false;
+        }
+        acc += c;
+        continue;
+      } else if (c === "[") {
+        inBrace = true;
+        braceStart = i;
+        braceNeg = false;
+        acc += c;
+        continue;
+      }
+      const doRecurse = !opt.noext && isExtglobType(c) && str.charAt(i) === "(" && /* c8 ignore start - the maxDepth is sufficient here */
+      (extDepth <= maxDepth || ast && ast.#canAdoptType(c));
+      if (doRecurse) {
+        const depthAdd = ast && ast.#canAdoptType(c) ? 0 : 1;
+        part.push(acc);
+        acc = "";
+        const ext2 = new _a(c, part);
+        part.push(ext2);
+        i = _a.#parseAST(str, ext2, i, opt, extDepth + depthAdd);
+        continue;
+      }
+      if (c === "|") {
+        part.push(acc);
+        acc = "";
+        parts.push(part);
+        part = new _a(null, ast);
+        continue;
+      }
+      if (c === ")") {
+        if (acc === "" && ast.#parts.length === 0) {
+          ast.#emptyExt = true;
+        }
+        part.push(acc);
+        acc = "";
+        ast.push(...parts, part);
+        return i;
+      }
+      acc += c;
+    }
+    ast.type = null;
+    ast.#hasMagic = void 0;
+    ast.#parts = [str.substring(pos - 1)];
+    return i;
+  }
+  #canAdoptWithSpace(child) {
+    return this.#canAdopt(child, adoptionWithSpaceMap);
+  }
+  #canAdopt(child, map = adoptionMap) {
+    if (!child || typeof child !== "object" || child.type !== null || child.#parts.length !== 1 || this.type === null) {
+      return false;
+    }
+    const gc = child.#parts[0];
+    if (!gc || typeof gc !== "object" || gc.type === null) {
+      return false;
+    }
+    return this.#canAdoptType(gc.type, map);
+  }
+  #canAdoptType(c, map = adoptionAnyMap) {
+    return !!map.get(this.type)?.includes(c);
+  }
+  #adoptWithSpace(child, index) {
+    const gc = child.#parts[0];
+    const blank = new _a(null, gc, this.options);
+    blank.#parts.push("");
+    gc.push(blank);
+    this.#adopt(child, index);
+  }
+  #adopt(child, index) {
+    const gc = child.#parts[0];
+    this.#parts.splice(index, 1, ...gc.#parts);
+    for (const p of gc.#parts) {
+      if (typeof p === "object")
+        p.#parent = this;
+    }
+    this.#toString = void 0;
+  }
+  #canUsurpType(c) {
+    const m = usurpMap.get(this.type);
+    return !!m?.has(c);
+  }
+  #canUsurp(child) {
+    if (!child || typeof child !== "object" || child.type !== null || child.#parts.length !== 1 || this.type === null || this.#parts.length !== 1) {
+      return false;
+    }
+    const gc = child.#parts[0];
+    if (!gc || typeof gc !== "object" || gc.type === null) {
+      return false;
+    }
+    return this.#canUsurpType(gc.type);
+  }
+  #usurp(child) {
+    const m = usurpMap.get(this.type);
+    const gc = child.#parts[0];
+    const nt = m?.get(gc.type);
+    if (!nt)
+      return false;
+    this.#parts = gc.#parts;
+    for (const p of this.#parts) {
+      if (typeof p === "object") {
+        p.#parent = this;
+      }
+    }
+    this.type = nt;
+    this.#toString = void 0;
+    this.#emptyExt = false;
+  }
+  static fromGlob(pattern, options = {}) {
+    const ast = new _a(null, void 0, options);
+    _a.#parseAST(pattern, ast, 0, options, 0);
+    return ast;
+  }
+  // returns the regular expression if there's magic, or the unescaped
+  // string if not.
+  toMMPattern() {
+    if (this !== this.#root)
+      return this.#root.toMMPattern();
+    const glob = this.toString();
+    const [re, body, hasMagic, uflag] = this.toRegExpSource();
+    const anyMagic = hasMagic || this.#hasMagic || this.#options.nocase && !this.#options.nocaseMagicOnly && glob.toUpperCase() !== glob.toLowerCase();
+    if (!anyMagic) {
+      return body;
+    }
+    const flags = (this.#options.nocase ? "i" : "") + (uflag ? "u" : "");
+    return Object.assign(new RegExp(`^${re}$`, flags), {
+      _src: re,
+      _glob: glob
+    });
+  }
+  get options() {
+    return this.#options;
+  }
+  // returns the string match, the regexp source, whether there's magic
+  // in the regexp (so a regular expression is required) and whether or
+  // not the uflag is needed for the regular expression (for posix classes)
+  // TODO: instead of injecting the start/end at this point, just return
+  // the BODY of the regexp, along with the start/end portions suitable
+  // for binding the start/end in either a joined full-path makeRe context
+  // (where we bind to (^|/), or a standalone matchPart context (where
+  // we bind to ^, and not /).  Otherwise slashes get duped!
+  //
+  // In part-matching mode, the start is:
+  // - if not isStart: nothing
+  // - if traversal possible, but not allowed: ^(?!\.\.?$)
+  // - if dots allowed or not possible: ^
+  // - if dots possible and not allowed: ^(?!\.)
+  // end is:
+  // - if not isEnd(): nothing
+  // - else: $
+  //
+  // In full-path matching mode, we put the slash at the START of the
+  // pattern, so start is:
+  // - if first pattern: same as part-matching mode
+  // - if not isStart(): nothing
+  // - if traversal possible, but not allowed: /(?!\.\.?(?:$|/))
+  // - if dots allowed or not possible: /
+  // - if dots possible and not allowed: /(?!\.)
+  // end is:
+  // - if last pattern, same as part-matching mode
+  // - else nothing
+  //
+  // Always put the (?:$|/) on negated tails, though, because that has to be
+  // there to bind the end of the negated pattern portion, and it's easier to
+  // just stick it in now rather than try to inject it later in the middle of
+  // the pattern.
+  //
+  // We can just always return the same end, and leave it up to the caller
+  // to know whether it's going to be used joined or in parts.
+  // And, if the start is adjusted slightly, can do the same there:
+  // - if not isStart: nothing
+  // - if traversal possible, but not allowed: (?:/|^)(?!\.\.?$)
+  // - if dots allowed or not possible: (?:/|^)
+  // - if dots possible and not allowed: (?:/|^)(?!\.)
+  //
+  // But it's better to have a simpler binding without a conditional, for
+  // performance, so probably better to return both start options.
+  //
+  // Then the caller just ignores the end if it's not the first pattern,
+  // and the start always gets applied.
+  //
+  // But that's always going to be $ if it's the ending pattern, or nothing,
+  // so the caller can just attach $ at the end of the pattern when building.
+  //
+  // So the todo is:
+  // - better detect what kind of start is needed
+  // - return both flavors of starting pattern
+  // - attach $ at the end of the pattern when creating the actual RegExp
+  //
+  // Ah, but wait, no, that all only applies to the root when the first pattern
+  // is not an extglob. If the first pattern IS an extglob, then we need all
+  // that dot prevention biz to live in the extglob portions, because eg
+  // +(*|.x*) can match .xy but not .yx.
+  //
+  // So, return the two flavors if it's #root and the first child is not an
+  // AST, otherwise leave it to the child AST to handle it, and there,
+  // use the (?:^|/) style of start binding.
+  //
+  // Even simplified further:
+  // - Since the start for a join is eg /(?!\.) and the start for a part
+  // is ^(?!\.), we can just prepend (?!\.) to the pattern (either root
+  // or start or whatever) and prepend ^ or / at the Regexp construction.
+  toRegExpSource(allowDot) {
+    const dot = allowDot ?? !!this.#options.dot;
+    if (this.#root === this) {
+      this.#flatten();
+      this.#fillNegs();
+    }
+    if (!isExtglobAST(this)) {
+      const noEmpty = this.isStart() && this.isEnd() && !this.#parts.some((s) => typeof s !== "string");
+      const src = this.#parts.map((p) => {
+        const [re, _, hasMagic, uflag] = typeof p === "string" ? _a.#parseGlob(p, this.#hasMagic, noEmpty) : p.toRegExpSource(allowDot);
+        this.#hasMagic = this.#hasMagic || hasMagic;
+        this.#uflag = this.#uflag || uflag;
+        return re;
+      }).join("");
+      let start2 = "";
+      if (this.isStart()) {
+        if (typeof this.#parts[0] === "string") {
+          const dotTravAllowed = this.#parts.length === 1 && justDots.has(this.#parts[0]);
+          if (!dotTravAllowed) {
+            const aps = addPatternStart;
+            const needNoTrav = (
+              // dots are allowed, and the pattern starts with [ or .
+              dot && aps.has(src.charAt(0)) || // the pattern starts with \., and then [ or .
+              src.startsWith("\\.") && aps.has(src.charAt(2)) || // the pattern starts with \.\., and then [ or .
+              src.startsWith("\\.\\.") && aps.has(src.charAt(4))
+            );
+            const needNoDot = !dot && !allowDot && aps.has(src.charAt(0));
+            start2 = needNoTrav ? startNoTraversal : needNoDot ? startNoDot : "";
+          }
+        }
+      }
+      let end = "";
+      if (this.isEnd() && this.#root.#filledNegs && this.#parent?.type === "!") {
+        end = "(?:$|\\/)";
+      }
+      const final2 = start2 + src + end;
+      return [
+        final2,
+        unescape(src),
+        this.#hasMagic = !!this.#hasMagic,
+        this.#uflag
+      ];
+    }
+    const repeated = this.type === "*" || this.type === "+";
+    const start = this.type === "!" ? "(?:(?!(?:" : "(?:";
+    let body = this.#partsToRegExp(dot);
+    if (this.isStart() && this.isEnd() && !body && this.type !== "!") {
+      const s = this.toString();
+      const me = this;
+      me.#parts = [s];
+      me.type = null;
+      me.#hasMagic = void 0;
+      return [s, unescape(this.toString()), false, false];
+    }
+    let bodyDotAllowed = !repeated || allowDot || dot || !startNoDot ? "" : this.#partsToRegExp(true);
+    if (bodyDotAllowed === body) {
+      bodyDotAllowed = "";
+    }
+    if (bodyDotAllowed) {
+      body = `(?:${body})(?:${bodyDotAllowed})*?`;
+    }
+    let final = "";
+    if (this.type === "!" && this.#emptyExt) {
+      final = (this.isStart() && !dot ? startNoDot : "") + starNoEmpty;
+    } else {
+      const close = this.type === "!" ? (
+        // !() must match something,but !(x) can match ''
+        "))" + (this.isStart() && !dot && !allowDot ? startNoDot : "") + star + ")"
+      ) : this.type === "@" ? ")" : this.type === "?" ? ")?" : this.type === "+" && bodyDotAllowed ? ")" : this.type === "*" && bodyDotAllowed ? `)?` : `)${this.type}`;
+      final = start + body + close;
+    }
+    return [
+      final,
+      unescape(body),
+      this.#hasMagic = !!this.#hasMagic,
+      this.#uflag
+    ];
+  }
+  #flatten() {
+    if (!isExtglobAST(this)) {
+      for (const p of this.#parts) {
+        if (typeof p === "object") {
+          p.#flatten();
+        }
+      }
+    } else {
+      let iterations = 0;
+      let done = false;
+      do {
+        done = true;
+        for (let i = 0; i < this.#parts.length; i++) {
+          const c = this.#parts[i];
+          if (typeof c === "object") {
+            c.#flatten();
+            if (this.#canAdopt(c)) {
+              done = false;
+              this.#adopt(c, i);
+            } else if (this.#canAdoptWithSpace(c)) {
+              done = false;
+              this.#adoptWithSpace(c, i);
+            } else if (this.#canUsurp(c)) {
+              done = false;
+              this.#usurp(c);
+            }
+          }
+        }
+      } while (!done && ++iterations < 10);
+    }
+    this.#toString = void 0;
+  }
+  #partsToRegExp(dot) {
+    return this.#parts.map((p) => {
+      if (typeof p === "string") {
+        throw new Error("string type in extglob ast??");
+      }
+      const [re, _, _hasMagic, uflag] = p.toRegExpSource(dot);
+      this.#uflag = this.#uflag || uflag;
+      return re;
+    }).filter((p) => !(this.isStart() && this.isEnd()) || !!p).join("|");
+  }
+  static #parseGlob(glob, hasMagic, noEmpty = false) {
+    let escaping = false;
+    let re = "";
+    let uflag = false;
+    let inStar = false;
+    for (let i = 0; i < glob.length; i++) {
+      const c = glob.charAt(i);
+      if (escaping) {
+        escaping = false;
+        re += (reSpecials.has(c) ? "\\" : "") + c;
+        continue;
+      }
+      if (c === "*") {
+        if (inStar)
+          continue;
+        inStar = true;
+        re += noEmpty && /^[*]+$/.test(glob) ? starNoEmpty : star;
+        hasMagic = true;
+        continue;
+      } else {
+        inStar = false;
+      }
+      if (c === "\\") {
+        if (i === glob.length - 1) {
+          re += "\\\\";
+        } else {
+          escaping = true;
+        }
+        continue;
+      }
+      if (c === "[") {
+        const [src, needUflag, consumed, magic] = parseClass(glob, i);
+        if (consumed) {
+          re += src;
+          uflag = uflag || needUflag;
+          i += consumed - 1;
+          hasMagic = hasMagic || magic;
+          continue;
+        }
+      }
+      if (c === "?") {
+        re += qmark;
+        hasMagic = true;
+        continue;
+      }
+      re += regExpEscape(c);
+    }
+    return [re, unescape(glob), !!hasMagic, uflag];
+  }
+};
+_a = AST;
+
+// node_modules/minimatch/dist/esm/escape.js
+var escape = (s, { windowsPathsNoEscape = false, magicalBraces = false } = {}) => {
+  if (magicalBraces) {
+    return windowsPathsNoEscape ? s.replace(/[?*()[\]{}]/g, "[$&]") : s.replace(/[?*()[\]\\{}]/g, "\\$&");
+  }
+  return windowsPathsNoEscape ? s.replace(/[?*()[\]]/g, "[$&]") : s.replace(/[?*()[\]\\]/g, "\\$&");
+};
+
+// node_modules/minimatch/dist/esm/index.js
+var minimatch = (p, pattern, options = {}) => {
+  assertValidPattern(pattern);
+  if (!options.nocomment && pattern.charAt(0) === "#") {
+    return false;
+  }
+  return new Minimatch(pattern, options).match(p);
+};
+var starDotExtRE = /^\*+([^+@!?*[(]*)$/;
+var starDotExtTest = (ext2) => (f) => !f.startsWith(".") && f.endsWith(ext2);
+var starDotExtTestDot = (ext2) => (f) => f.endsWith(ext2);
+var starDotExtTestNocase = (ext2) => {
+  ext2 = ext2.toLowerCase();
+  return (f) => !f.startsWith(".") && f.toLowerCase().endsWith(ext2);
+};
+var starDotExtTestNocaseDot = (ext2) => {
+  ext2 = ext2.toLowerCase();
+  return (f) => f.toLowerCase().endsWith(ext2);
+};
+var starDotStarRE = /^\*+\.\*+$/;
+var starDotStarTest = (f) => !f.startsWith(".") && f.includes(".");
+var starDotStarTestDot = (f) => f !== "." && f !== ".." && f.includes(".");
+var dotStarRE = /^\.\*+$/;
+var dotStarTest = (f) => f !== "." && f !== ".." && f.startsWith(".");
+var starRE = /^\*+$/;
+var starTest = (f) => f.length !== 0 && !f.startsWith(".");
+var starTestDot = (f) => f.length !== 0 && f !== "." && f !== "..";
+var qmarksRE = /^\?+([^+@!?*[(]*)?$/;
+var qmarksTestNocase = ([$0, ext2 = ""]) => {
+  const noext = qmarksTestNoExt([$0]);
+  if (!ext2)
+    return noext;
+  ext2 = ext2.toLowerCase();
+  return (f) => noext(f) && f.toLowerCase().endsWith(ext2);
+};
+var qmarksTestNocaseDot = ([$0, ext2 = ""]) => {
+  const noext = qmarksTestNoExtDot([$0]);
+  if (!ext2)
+    return noext;
+  ext2 = ext2.toLowerCase();
+  return (f) => noext(f) && f.toLowerCase().endsWith(ext2);
+};
+var qmarksTestDot = ([$0, ext2 = ""]) => {
+  const noext = qmarksTestNoExtDot([$0]);
+  return !ext2 ? noext : (f) => noext(f) && f.endsWith(ext2);
+};
+var qmarksTest = ([$0, ext2 = ""]) => {
+  const noext = qmarksTestNoExt([$0]);
+  return !ext2 ? noext : (f) => noext(f) && f.endsWith(ext2);
+};
+var qmarksTestNoExt = ([$0]) => {
+  const len = $0.length;
+  return (f) => f.length === len && !f.startsWith(".");
+};
+var qmarksTestNoExtDot = ([$0]) => {
+  const len = $0.length;
+  return (f) => f.length === len && f !== "." && f !== "..";
+};
+var defaultPlatform = typeof process === "object" && process ? typeof process.env === "object" && process.env && process.env.__MINIMATCH_TESTING_PLATFORM__ || process.platform : "posix";
+var path = {
+  win32: { sep: "\\" },
+  posix: { sep: "/" }
+};
+var sep = defaultPlatform === "win32" ? path.win32.sep : path.posix.sep;
+minimatch.sep = sep;
+var GLOBSTAR = /* @__PURE__ */ Symbol("globstar **");
+minimatch.GLOBSTAR = GLOBSTAR;
+var qmark2 = "[^/]";
+var star2 = qmark2 + "*?";
+var twoStarDot = "(?:(?!(?:\\/|^)(?:\\.{1,2})($|\\/)).)*?";
+var twoStarNoDot = "(?:(?!(?:\\/|^)\\.).)*?";
+var filter = (pattern, options = {}) => (p) => minimatch(p, pattern, options);
+minimatch.filter = filter;
+var ext = (a, b = {}) => Object.assign({}, a, b);
+var defaults = (def) => {
+  if (!def || typeof def !== "object" || !Object.keys(def).length) {
+    return minimatch;
+  }
+  const orig = minimatch;
+  const m = (p, pattern, options = {}) => orig(p, pattern, ext(def, options));
+  return Object.assign(m, {
+    Minimatch: class Minimatch extends orig.Minimatch {
+      constructor(pattern, options = {}) {
+        super(pattern, ext(def, options));
+      }
+      static defaults(options) {
+        return orig.defaults(ext(def, options)).Minimatch;
+      }
+    },
+    AST: class AST extends orig.AST {
+      /* c8 ignore start */
+      constructor(type, parent, options = {}) {
+        super(type, parent, ext(def, options));
+      }
+      /* c8 ignore stop */
+      static fromGlob(pattern, options = {}) {
+        return orig.AST.fromGlob(pattern, ext(def, options));
+      }
+    },
+    unescape: (s, options = {}) => orig.unescape(s, ext(def, options)),
+    escape: (s, options = {}) => orig.escape(s, ext(def, options)),
+    filter: (pattern, options = {}) => orig.filter(pattern, ext(def, options)),
+    defaults: (options) => orig.defaults(ext(def, options)),
+    makeRe: (pattern, options = {}) => orig.makeRe(pattern, ext(def, options)),
+    braceExpand: (pattern, options = {}) => orig.braceExpand(pattern, ext(def, options)),
+    match: (list, pattern, options = {}) => orig.match(list, pattern, ext(def, options)),
+    sep: orig.sep,
+    GLOBSTAR
+  });
+};
+minimatch.defaults = defaults;
+var braceExpand = (pattern, options = {}) => {
+  assertValidPattern(pattern);
+  if (options.nobrace || !/\{(?:(?!\{).)*\}/.test(pattern)) {
+    return [pattern];
+  }
+  return expand(pattern, { max: options.braceExpandMax });
+};
+minimatch.braceExpand = braceExpand;
+var makeRe = (pattern, options = {}) => new Minimatch(pattern, options).makeRe();
+minimatch.makeRe = makeRe;
+var match = (list, pattern, options = {}) => {
+  const mm = new Minimatch(pattern, options);
+  list = list.filter((f) => mm.match(f));
+  if (mm.options.nonull && !list.length) {
+    list.push(pattern);
+  }
+  return list;
+};
+minimatch.match = match;
+var globMagic = /[?*]|[+@!]\(.*?\)|\[|\]/;
+var regExpEscape2 = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+var Minimatch = class {
+  options;
+  set;
+  pattern;
+  windowsPathsNoEscape;
+  nonegate;
+  negate;
+  comment;
+  empty;
+  preserveMultipleSlashes;
+  partial;
+  globSet;
+  globParts;
+  nocase;
+  isWindows;
+  platform;
+  windowsNoMagicRoot;
+  maxGlobstarRecursion;
+  regexp;
+  constructor(pattern, options = {}) {
+    assertValidPattern(pattern);
+    options = options || {};
+    this.options = options;
+    this.maxGlobstarRecursion = options.maxGlobstarRecursion ?? 200;
+    this.pattern = pattern;
+    this.platform = options.platform || defaultPlatform;
+    this.isWindows = this.platform === "win32";
+    const awe = "allowWindowsEscape";
+    this.windowsPathsNoEscape = !!options.windowsPathsNoEscape || options[awe] === false;
+    if (this.windowsPathsNoEscape) {
+      this.pattern = this.pattern.replace(/\\/g, "/");
+    }
+    this.preserveMultipleSlashes = !!options.preserveMultipleSlashes;
+    this.regexp = null;
+    this.negate = false;
+    this.nonegate = !!options.nonegate;
+    this.comment = false;
+    this.empty = false;
+    this.partial = !!options.partial;
+    this.nocase = !!this.options.nocase;
+    this.windowsNoMagicRoot = options.windowsNoMagicRoot !== void 0 ? options.windowsNoMagicRoot : !!(this.isWindows && this.nocase);
+    this.globSet = [];
+    this.globParts = [];
+    this.set = [];
+    this.make();
+  }
+  hasMagic() {
+    if (this.options.magicalBraces && this.set.length > 1) {
+      return true;
+    }
+    for (const pattern of this.set) {
+      for (const part of pattern) {
+        if (typeof part !== "string")
+          return true;
+      }
+    }
+    return false;
+  }
+  debug(..._) {
+  }
+  make() {
+    const pattern = this.pattern;
+    const options = this.options;
+    if (!options.nocomment && pattern.charAt(0) === "#") {
+      this.comment = true;
+      return;
+    }
+    if (!pattern) {
+      this.empty = true;
+      return;
+    }
+    this.parseNegate();
+    this.globSet = [...new Set(this.braceExpand())];
+    if (options.debug) {
+      this.debug = (...args) => console.error(...args);
+    }
+    this.debug(this.pattern, this.globSet);
+    const rawGlobParts = this.globSet.map((s) => this.slashSplit(s));
+    this.globParts = this.preprocess(rawGlobParts);
+    this.debug(this.pattern, this.globParts);
+    let set = this.globParts.map((s, _, __) => {
+      if (this.isWindows && this.windowsNoMagicRoot) {
+        const isUNC = s[0] === "" && s[1] === "" && (s[2] === "?" || !globMagic.test(s[2])) && !globMagic.test(s[3]);
+        const isDrive = /^[a-z]:/i.test(s[0]);
+        if (isUNC) {
+          return [
+            ...s.slice(0, 4),
+            ...s.slice(4).map((ss) => this.parse(ss))
+          ];
+        } else if (isDrive) {
+          return [s[0], ...s.slice(1).map((ss) => this.parse(ss))];
+        }
+      }
+      return s.map((ss) => this.parse(ss));
+    });
+    this.debug(this.pattern, set);
+    this.set = set.filter((s) => s.indexOf(false) === -1);
+    if (this.isWindows) {
+      for (let i = 0; i < this.set.length; i++) {
+        const p = this.set[i];
+        if (p[0] === "" && p[1] === "" && this.globParts[i][2] === "?" && typeof p[3] === "string" && /^[a-z]:$/i.test(p[3])) {
+          p[2] = "?";
+        }
+      }
+    }
+    this.debug(this.pattern, this.set);
+  }
+  // various transforms to equivalent pattern sets that are
+  // faster to process in a filesystem walk.  The goal is to
+  // eliminate what we can, and push all ** patterns as far
+  // to the right as possible, even if it increases the number
+  // of patterns that we have to process.
+  preprocess(globParts) {
+    if (this.options.noglobstar) {
+      for (const partset of globParts) {
+        for (let j = 0; j < partset.length; j++) {
+          if (partset[j] === "**") {
+            partset[j] = "*";
+          }
+        }
+      }
+    }
+    const { optimizationLevel = 1 } = this.options;
+    if (optimizationLevel >= 2) {
+      globParts = this.firstPhasePreProcess(globParts);
+      globParts = this.secondPhasePreProcess(globParts);
+    } else if (optimizationLevel >= 1) {
+      globParts = this.levelOneOptimize(globParts);
+    } else {
+      globParts = this.adjascentGlobstarOptimize(globParts);
+    }
+    return globParts;
+  }
+  // just get rid of adjascent ** portions
+  adjascentGlobstarOptimize(globParts) {
+    return globParts.map((parts) => {
+      let gs = -1;
+      while (-1 !== (gs = parts.indexOf("**", gs + 1))) {
+        let i = gs;
+        while (parts[i + 1] === "**") {
+          i++;
+        }
+        if (i !== gs) {
+          parts.splice(gs, i - gs);
+        }
+      }
+      return parts;
+    });
+  }
+  // get rid of adjascent ** and resolve .. portions
+  levelOneOptimize(globParts) {
+    return globParts.map((parts) => {
+      parts = parts.reduce((set, part) => {
+        const prev = set[set.length - 1];
+        if (part === "**" && prev === "**") {
+          return set;
+        }
+        if (part === "..") {
+          if (prev && prev !== ".." && prev !== "." && prev !== "**") {
+            set.pop();
+            return set;
+          }
+        }
+        set.push(part);
+        return set;
+      }, []);
+      return parts.length === 0 ? [""] : parts;
+    });
+  }
+  levelTwoFileOptimize(parts) {
+    if (!Array.isArray(parts)) {
+      parts = this.slashSplit(parts);
+    }
+    let didSomething = false;
+    do {
+      didSomething = false;
+      if (!this.preserveMultipleSlashes) {
+        for (let i = 1; i < parts.length - 1; i++) {
+          const p = parts[i];
+          if (i === 1 && p === "" && parts[0] === "")
+            continue;
+          if (p === "." || p === "") {
+            didSomething = true;
+            parts.splice(i, 1);
+            i--;
+          }
+        }
+        if (parts[0] === "." && parts.length === 2 && (parts[1] === "." || parts[1] === "")) {
+          didSomething = true;
+          parts.pop();
+        }
+      }
+      let dd = 0;
+      while (-1 !== (dd = parts.indexOf("..", dd + 1))) {
+        const p = parts[dd - 1];
+        if (p && p !== "." && p !== ".." && p !== "**" && !(this.isWindows && /^[a-z]:$/i.test(p))) {
+          didSomething = true;
+          parts.splice(dd - 1, 2);
+          dd -= 2;
+        }
+      }
+    } while (didSomething);
+    return parts.length === 0 ? [""] : parts;
+  }
+  // First phase: single-pattern processing
+  // <pre> is 1 or more portions
+  // <rest> is 1 or more portions
+  // <p> is any portion other than ., .., '', or **
+  // <e> is . or ''
+  //
+  // **/.. is *brutal* for filesystem walking performance, because
+  // it effectively resets the recursive walk each time it occurs,
+  // and ** cannot be reduced out by a .. pattern part like a regexp
+  // or most strings (other than .., ., and '') can be.
+  //
+  // <pre>/**/../<p>/<p>/<rest> -> {<pre>/../<p>/<p>/<rest>,<pre>/**/<p>/<p>/<rest>}
+  // <pre>/<e>/<rest> -> <pre>/<rest>
+  // <pre>/<p>/../<rest> -> <pre>/<rest>
+  // **/**/<rest> -> **/<rest>
+  //
+  // **/*/<rest> -> */**/<rest> <== not valid because ** doesn't follow
+  // this WOULD be allowed if ** did follow symlinks, or * didn't
+  firstPhasePreProcess(globParts) {
+    let didSomething = false;
+    do {
+      didSomething = false;
+      for (let parts of globParts) {
+        let gs = -1;
+        while (-1 !== (gs = parts.indexOf("**", gs + 1))) {
+          let gss = gs;
+          while (parts[gss + 1] === "**") {
+            gss++;
+          }
+          if (gss > gs) {
+            parts.splice(gs + 1, gss - gs);
+          }
+          let next = parts[gs + 1];
+          const p = parts[gs + 2];
+          const p2 = parts[gs + 3];
+          if (next !== "..")
+            continue;
+          if (!p || p === "." || p === ".." || !p2 || p2 === "." || p2 === "..") {
+            continue;
+          }
+          didSomething = true;
+          parts.splice(gs, 1);
+          const other = parts.slice(0);
+          other[gs] = "**";
+          globParts.push(other);
+          gs--;
+        }
+        if (!this.preserveMultipleSlashes) {
+          for (let i = 1; i < parts.length - 1; i++) {
+            const p = parts[i];
+            if (i === 1 && p === "" && parts[0] === "")
+              continue;
+            if (p === "." || p === "") {
+              didSomething = true;
+              parts.splice(i, 1);
+              i--;
+            }
+          }
+          if (parts[0] === "." && parts.length === 2 && (parts[1] === "." || parts[1] === "")) {
+            didSomething = true;
+            parts.pop();
+          }
+        }
+        let dd = 0;
+        while (-1 !== (dd = parts.indexOf("..", dd + 1))) {
+          const p = parts[dd - 1];
+          if (p && p !== "." && p !== ".." && p !== "**") {
+            didSomething = true;
+            const needDot = dd === 1 && parts[dd + 1] === "**";
+            const splin = needDot ? ["."] : [];
+            parts.splice(dd - 1, 2, ...splin);
+            if (parts.length === 0)
+              parts.push("");
+            dd -= 2;
+          }
+        }
+      }
+    } while (didSomething);
+    return globParts;
+  }
+  // second phase: multi-pattern dedupes
+  // {<pre>/*/<rest>,<pre>/<p>/<rest>} -> <pre>/*/<rest>
+  // {<pre>/<rest>,<pre>/<rest>} -> <pre>/<rest>
+  // {<pre>/**/<rest>,<pre>/<rest>} -> <pre>/**/<rest>
+  //
+  // {<pre>/**/<rest>,<pre>/**/<p>/<rest>} -> <pre>/**/<rest>
+  // ^-- not valid because ** doens't follow symlinks
+  secondPhasePreProcess(globParts) {
+    for (let i = 0; i < globParts.length - 1; i++) {
+      for (let j = i + 1; j < globParts.length; j++) {
+        const matched = this.partsMatch(globParts[i], globParts[j], !this.preserveMultipleSlashes);
+        if (matched) {
+          globParts[i] = [];
+          globParts[j] = matched;
+          break;
+        }
+      }
+    }
+    return globParts.filter((gs) => gs.length);
+  }
+  partsMatch(a, b, emptyGSMatch = false) {
+    let ai = 0;
+    let bi = 0;
+    let result = [];
+    let which = "";
+    while (ai < a.length && bi < b.length) {
+      if (a[ai] === b[bi]) {
+        result.push(which === "b" ? b[bi] : a[ai]);
+        ai++;
+        bi++;
+      } else if (emptyGSMatch && a[ai] === "**" && b[bi] === a[ai + 1]) {
+        result.push(a[ai]);
+        ai++;
+      } else if (emptyGSMatch && b[bi] === "**" && a[ai] === b[bi + 1]) {
+        result.push(b[bi]);
+        bi++;
+      } else if (a[ai] === "*" && b[bi] && (this.options.dot || !b[bi].startsWith(".")) && b[bi] !== "**") {
+        if (which === "b")
+          return false;
+        which = "a";
+        result.push(a[ai]);
+        ai++;
+        bi++;
+      } else if (b[bi] === "*" && a[ai] && (this.options.dot || !a[ai].startsWith(".")) && a[ai] !== "**") {
+        if (which === "a")
+          return false;
+        which = "b";
+        result.push(b[bi]);
+        ai++;
+        bi++;
+      } else {
+        return false;
+      }
+    }
+    return a.length === b.length && result;
+  }
+  parseNegate() {
+    if (this.nonegate)
+      return;
+    const pattern = this.pattern;
+    let negate = false;
+    let negateOffset = 0;
+    for (let i = 0; i < pattern.length && pattern.charAt(i) === "!"; i++) {
+      negate = !negate;
+      negateOffset++;
+    }
+    if (negateOffset)
+      this.pattern = pattern.slice(negateOffset);
+    this.negate = negate;
+  }
+  // set partial to true to test if, for example,
+  // "/a/b" matches the start of "/*/b/*/d"
+  // Partial means, if you run out of file before you run
+  // out of pattern, then that's fine, as long as all
+  // the parts match.
+  matchOne(file, pattern, partial = false) {
+    let fileStartIndex = 0;
+    let patternStartIndex = 0;
+    if (this.isWindows) {
+      const fileDrive = typeof file[0] === "string" && /^[a-z]:$/i.test(file[0]);
+      const fileUNC = !fileDrive && file[0] === "" && file[1] === "" && file[2] === "?" && /^[a-z]:$/i.test(file[3]);
+      const patternDrive = typeof pattern[0] === "string" && /^[a-z]:$/i.test(pattern[0]);
+      const patternUNC = !patternDrive && pattern[0] === "" && pattern[1] === "" && pattern[2] === "?" && typeof pattern[3] === "string" && /^[a-z]:$/i.test(pattern[3]);
+      const fdi = fileUNC ? 3 : fileDrive ? 0 : void 0;
+      const pdi = patternUNC ? 3 : patternDrive ? 0 : void 0;
+      if (typeof fdi === "number" && typeof pdi === "number") {
+        const [fd, pd] = [
+          file[fdi],
+          pattern[pdi]
+        ];
+        if (fd.toLowerCase() === pd.toLowerCase()) {
+          pattern[pdi] = fd;
+          patternStartIndex = pdi;
+          fileStartIndex = fdi;
+        }
+      }
+    }
+    const { optimizationLevel = 1 } = this.options;
+    if (optimizationLevel >= 2) {
+      file = this.levelTwoFileOptimize(file);
+    }
+    if (pattern.includes(GLOBSTAR)) {
+      return this.#matchGlobstar(file, pattern, partial, fileStartIndex, patternStartIndex);
+    }
+    return this.#matchOne(file, pattern, partial, fileStartIndex, patternStartIndex);
+  }
+  #matchGlobstar(file, pattern, partial, fileIndex, patternIndex) {
+    const firstgs = pattern.indexOf(GLOBSTAR, patternIndex);
+    const lastgs = pattern.lastIndexOf(GLOBSTAR);
+    const [head, body, tail] = partial ? [
+      pattern.slice(patternIndex, firstgs),
+      pattern.slice(firstgs + 1),
+      []
+    ] : [
+      pattern.slice(patternIndex, firstgs),
+      pattern.slice(firstgs + 1, lastgs),
+      pattern.slice(lastgs + 1)
+    ];
+    if (head.length) {
+      const fileHead = file.slice(fileIndex, fileIndex + head.length);
+      if (!this.#matchOne(fileHead, head, partial, 0, 0)) {
+        return false;
+      }
+      fileIndex += head.length;
+      patternIndex += head.length;
+    }
+    let fileTailMatch = 0;
+    if (tail.length) {
+      if (tail.length + fileIndex > file.length)
+        return false;
+      let tailStart = file.length - tail.length;
+      if (this.#matchOne(file, tail, partial, tailStart, 0)) {
+        fileTailMatch = tail.length;
+      } else {
+        if (file[file.length - 1] !== "" || fileIndex + tail.length === file.length) {
+          return false;
+        }
+        tailStart--;
+        if (!this.#matchOne(file, tail, partial, tailStart, 0)) {
+          return false;
+        }
+        fileTailMatch = tail.length + 1;
+      }
+    }
+    if (!body.length) {
+      let sawSome = !!fileTailMatch;
+      for (let i2 = fileIndex; i2 < file.length - fileTailMatch; i2++) {
+        const f = String(file[i2]);
+        sawSome = true;
+        if (f === "." || f === ".." || !this.options.dot && f.startsWith(".")) {
+          return false;
+        }
+      }
+      return partial || sawSome;
+    }
+    const bodySegments = [[[], 0]];
+    let currentBody = bodySegments[0];
+    let nonGsParts = 0;
+    const nonGsPartsSums = [0];
+    for (const b of body) {
+      if (b === GLOBSTAR) {
+        nonGsPartsSums.push(nonGsParts);
+        currentBody = [[], 0];
+        bodySegments.push(currentBody);
+      } else {
+        currentBody[0].push(b);
+        nonGsParts++;
+      }
+    }
+    let i = bodySegments.length - 1;
+    const fileLength = file.length - fileTailMatch;
+    for (const b of bodySegments) {
+      b[1] = fileLength - (nonGsPartsSums[i--] + b[0].length);
+    }
+    return !!this.#matchGlobStarBodySections(file, bodySegments, fileIndex, 0, partial, 0, !!fileTailMatch);
+  }
+  // return false for "nope, not matching"
+  // return null for "not matching, cannot keep trying"
+  #matchGlobStarBodySections(file, bodySegments, fileIndex, bodyIndex, partial, globStarDepth, sawTail) {
+    const bs = bodySegments[bodyIndex];
+    if (!bs) {
+      for (let i = fileIndex; i < file.length; i++) {
+        sawTail = true;
+        const f = file[i];
+        if (f === "." || f === ".." || !this.options.dot && f.startsWith(".")) {
+          return false;
+        }
+      }
+      return sawTail;
+    }
+    const [body, after] = bs;
+    while (fileIndex <= after) {
+      const m = this.#matchOne(file.slice(0, fileIndex + body.length), body, partial, fileIndex, 0);
+      if (m && globStarDepth < this.maxGlobstarRecursion) {
+        const sub = this.#matchGlobStarBodySections(file, bodySegments, fileIndex + body.length, bodyIndex + 1, partial, globStarDepth + 1, sawTail);
+        if (sub !== false) {
+          return sub;
+        }
+      }
+      const f = file[fileIndex];
+      if (f === "." || f === ".." || !this.options.dot && f.startsWith(".")) {
+        return false;
+      }
+      fileIndex++;
+    }
+    return partial || null;
+  }
+  #matchOne(file, pattern, partial, fileIndex, patternIndex) {
+    let fi;
+    let pi;
+    let pl;
+    let fl;
+    for (fi = fileIndex, pi = patternIndex, fl = file.length, pl = pattern.length; fi < fl && pi < pl; fi++, pi++) {
+      this.debug("matchOne loop");
+      let p = pattern[pi];
+      let f = file[fi];
+      this.debug(pattern, p, f);
+      if (p === false || p === GLOBSTAR) {
+        return false;
+      }
+      let hit;
+      if (typeof p === "string") {
+        hit = f === p;
+        this.debug("string match", p, f, hit);
+      } else {
+        hit = p.test(f);
+        this.debug("pattern match", p, f, hit);
+      }
+      if (!hit)
+        return false;
+    }
+    if (fi === fl && pi === pl) {
+      return true;
+    } else if (fi === fl) {
+      return partial;
+    } else if (pi === pl) {
+      return fi === fl - 1 && file[fi] === "";
+    } else {
+      throw new Error("wtf?");
+    }
+  }
+  braceExpand() {
+    return braceExpand(this.pattern, this.options);
+  }
+  parse(pattern) {
+    assertValidPattern(pattern);
+    const options = this.options;
+    if (pattern === "**")
+      return GLOBSTAR;
+    if (pattern === "")
+      return "";
+    let m;
+    let fastTest = null;
+    if (m = pattern.match(starRE)) {
+      fastTest = options.dot ? starTestDot : starTest;
+    } else if (m = pattern.match(starDotExtRE)) {
+      fastTest = (options.nocase ? options.dot ? starDotExtTestNocaseDot : starDotExtTestNocase : options.dot ? starDotExtTestDot : starDotExtTest)(m[1]);
+    } else if (m = pattern.match(qmarksRE)) {
+      fastTest = (options.nocase ? options.dot ? qmarksTestNocaseDot : qmarksTestNocase : options.dot ? qmarksTestDot : qmarksTest)(m);
+    } else if (m = pattern.match(starDotStarRE)) {
+      fastTest = options.dot ? starDotStarTestDot : starDotStarTest;
+    } else if (m = pattern.match(dotStarRE)) {
+      fastTest = dotStarTest;
+    }
+    const re = AST.fromGlob(pattern, this.options).toMMPattern();
+    if (fastTest && typeof re === "object") {
+      Reflect.defineProperty(re, "test", { value: fastTest });
+    }
+    return re;
+  }
+  makeRe() {
+    if (this.regexp || this.regexp === false)
+      return this.regexp;
+    const set = this.set;
+    if (!set.length) {
+      this.regexp = false;
+      return this.regexp;
+    }
+    const options = this.options;
+    const twoStar = options.noglobstar ? star2 : options.dot ? twoStarDot : twoStarNoDot;
+    const flags = new Set(options.nocase ? ["i"] : []);
+    let re = set.map((pattern) => {
+      const pp = pattern.map((p) => {
+        if (p instanceof RegExp) {
+          for (const f of p.flags.split(""))
+            flags.add(f);
+        }
+        return typeof p === "string" ? regExpEscape2(p) : p === GLOBSTAR ? GLOBSTAR : p._src;
+      });
+      pp.forEach((p, i) => {
+        const next = pp[i + 1];
+        const prev = pp[i - 1];
+        if (p !== GLOBSTAR || prev === GLOBSTAR) {
+          return;
+        }
+        if (prev === void 0) {
+          if (next !== void 0 && next !== GLOBSTAR) {
+            pp[i + 1] = "(?:\\/|" + twoStar + "\\/)?" + next;
+          } else {
+            pp[i] = twoStar;
+          }
+        } else if (next === void 0) {
+          pp[i - 1] = prev + "(?:\\/|\\/" + twoStar + ")?";
+        } else if (next !== GLOBSTAR) {
+          pp[i - 1] = prev + "(?:\\/|\\/" + twoStar + "\\/)" + next;
+          pp[i + 1] = GLOBSTAR;
+        }
+      });
+      const filtered = pp.filter((p) => p !== GLOBSTAR);
+      if (this.partial && filtered.length >= 1) {
+        const prefixes = [];
+        for (let i = 1; i <= filtered.length; i++) {
+          prefixes.push(filtered.slice(0, i).join("/"));
+        }
+        return "(?:" + prefixes.join("|") + ")";
+      }
+      return filtered.join("/");
+    }).join("|");
+    const [open, close] = set.length > 1 ? ["(?:", ")"] : ["", ""];
+    re = "^" + open + re + close + "$";
+    if (this.partial) {
+      re = "^(?:\\/|" + open + re.slice(1, -1) + close + ")$";
+    }
+    if (this.negate)
+      re = "^(?!" + re + ").+$";
+    try {
+      this.regexp = new RegExp(re, [...flags].join(""));
+    } catch {
+      this.regexp = false;
+    }
+    return this.regexp;
+  }
+  slashSplit(p) {
+    if (this.preserveMultipleSlashes) {
+      return p.split("/");
+    } else if (this.isWindows && /^\/\/[^/]+/.test(p)) {
+      return ["", ...p.split(/\/+/)];
+    } else {
+      return p.split(/\/+/);
+    }
+  }
+  match(f, partial = this.partial) {
+    this.debug("match", f, this.pattern);
+    if (this.comment) {
+      return false;
+    }
+    if (this.empty) {
+      return f === "";
+    }
+    if (f === "/" && partial) {
+      return true;
+    }
+    const options = this.options;
+    if (this.isWindows) {
+      f = f.split("\\").join("/");
+    }
+    const ff = this.slashSplit(f);
+    this.debug(this.pattern, "split", ff);
+    const set = this.set;
+    this.debug(this.pattern, "set", set);
+    let filename = ff[ff.length - 1];
+    if (!filename) {
+      for (let i = ff.length - 2; !filename && i >= 0; i--) {
+        filename = ff[i];
+      }
+    }
+    for (const pattern of set) {
+      let file = ff;
+      if (options.matchBase && pattern.length === 1) {
+        file = [filename];
+      }
+      const hit = this.matchOne(file, pattern, partial);
+      if (hit) {
+        if (options.flipNegate) {
+          return true;
+        }
+        return !this.negate;
+      }
+    }
+    if (options.flipNegate) {
+      return false;
+    }
+    return this.negate;
+  }
+  static defaults(def) {
+    return minimatch.defaults(def).Minimatch;
+  }
+};
+minimatch.AST = AST;
+minimatch.Minimatch = Minimatch;
+minimatch.escape = escape;
+minimatch.unescape = unescape;
+
+// src/sync/PathMapper.ts
+var path2 = __toESM(require("path"));
+var vscode2 = __toESM(require("vscode"));
+var PathMapper = class {
+  constructor(config2) {
+    this.config = config2;
+  }
+  config;
+  mapToRemote(uri) {
+    const primary = vscode2.workspace.workspaceFolders?.[0];
+    if (!primary) {
+      throw new Error(`File ${uri.fsPath} is not in a workspace folder`);
+    }
+    const rootRel = path2.relative(primary.uri.fsPath, uri.fsPath).replace(/\\/g, "/");
+    if (rootRel === ".." || rootRel.startsWith("../") || path2.isAbsolute(rootRel)) {
+      throw new Error(`File ${uri.fsPath} is not in the primary workspace folder (${primary.uri.fsPath})`);
+    }
+    const syncDir = this.config.syncDirectory;
+    let relativePath = rootRel;
+    if (syncDir) {
+      if (rootRel !== syncDir && !rootRel.startsWith(syncDir + "/")) {
+        throw new Error(`File ${uri.fsPath} is outside the sync directory '${syncDir}'`);
+      }
+      relativePath = rootRel.slice(syncDir.length);
+    }
+    if (!relativePath.startsWith("/")) {
+      relativePath = "/" + relativePath;
+    }
+    this.validate(relativePath);
+    return relativePath;
+  }
+  validate(remotePath) {
+    validateRemotePath(remotePath);
+  }
+};
+function validateRemotePath(remotePath) {
+  if (!remotePath) {
+    throw new Error("Empty remote path");
+  }
+  if (/[\x00-\x1f\x7f-\x9f]/.test(remotePath)) {
+    throw new Error(`Control character in remote path: ${JSON.stringify(remotePath)}`);
+  }
+  if (/[*?\[\]]/.test(remotePath)) {
+    throw new Error(`Invalid characters in path: ${remotePath}`);
+  }
+  if (remotePath.split("/").some((seg) => seg === "..")) {
+    throw new Error(`Path traversal not allowed: ${remotePath}`);
+  }
+  if (remotePath.includes("\\")) {
+    throw new Error(`Backslash not allowed in remote path: ${remotePath}`);
+  }
+  if (remotePath.includes("//")) {
+    throw new Error(`Double slashes not allowed: ${remotePath}`);
+  }
+  if (remotePath.includes(":")) {
+    throw new Error(`Colon not allowed in remote path: ${remotePath}`);
+  }
+}
+
+// src/sync/SyncEngine.ts
+var ALWAYS_EXCLUDE = [
+  "**/NetscriptDefinitions.d.ts",
+  ".git/**",
+  ".gitignore",
+  ".vscode/**",
+  "node_modules/**"
+];
+var MAX_FILE_SIZE_BYTES = 1024 * 1024;
+var MAX_DEFINITIONS_SIZE_BYTES = 8 * 1024 * 1024;
+var MAX_DOWNLOAD_FILE_COUNT = 5e3;
+var SyncEngine = class {
+  constructor(api2, config2, outputChannel2) {
+    this.api = api2;
+    this.config = config2;
+    this.pathMapper = new PathMapper(config2);
+    this.outputChannel = outputChannel2;
+  }
+  api;
+  config;
+  pathMapper;
+  debounceTimers = /* @__PURE__ */ new Map();
+  outputChannel;
+  async pushFile(uri) {
+    if (this.config.fileExtensions.length === 0) {
+      vscode3.window.showWarningMessage(
+        "bitburnerSync.fileExtensions is set to []. Nothing will be synced. Remove the setting to fall back to the defaults."
+      );
+      return;
+    }
+    if (this.isExcluded(uri)) {
+      this.log(`Excluded from sync: ${uri.fsPath}`);
+      return;
+    }
+    let size = -1;
+    try {
+      size = (await vscode3.workspace.fs.stat(uri)).size;
+    } catch {
+    }
+    if (size > MAX_FILE_SIZE_BYTES) {
+      throw new Error(
+        `File exceeds the ${formatBytes(MAX_FILE_SIZE_BYTES)} sync limit: ${uri.fsPath} (${formatBytes(size)})`
+      );
+    }
+    const remotePath = this.pathMapper.mapToRemote(uri);
+    const bytes = await vscode3.workspace.fs.readFile(uri);
+    if (bytes.byteLength > MAX_FILE_SIZE_BYTES) {
+      throw new Error(
+        `File exceeds the ${formatBytes(MAX_FILE_SIZE_BYTES)} sync limit: ${uri.fsPath} (${formatBytes(bytes.byteLength)})`
+      );
+    }
+    const content = Buffer.from(bytes).toString("utf8");
+    await this.api.pushFile(remotePath, content, this.config.targetServer);
+    this.log(`Pushed: ${remotePath}`);
+    if (this.config.showNotifications) {
+      vscode3.window.showInformationMessage(`Synced: ${remotePath}`);
+    }
+  }
+  async syncAll() {
+    if (this.config.fileExtensions.length === 0) {
+      vscode3.window.showWarningMessage(
+        "bitburnerSync.fileExtensions is set to []. Nothing will be synced. Remove the setting to fall back to the defaults."
+      );
+      return;
+    }
+    const primary = vscode3.workspace.workspaceFolders?.[0];
+    if (!primary) {
+      vscode3.window.showWarningMessage("No workspace folder open.");
+      return;
+    }
+    const includePattern = new vscode3.RelativePattern(primary, this.config.fileGlob);
+    const excludeGlob = this.findFilesExcludeGlob();
+    const excludePattern = excludeGlob ? new vscode3.RelativePattern(primary, excludeGlob) : null;
+    const files = await vscode3.workspace.findFiles(includePattern, excludePattern);
+    if (files.length === 0) {
+      vscode3.window.showWarningMessage("No matching files found to sync.");
+      return;
+    }
+    let pushed = 0;
+    let failed = 0;
+    let excluded = 0;
+    for (const file of files) {
+      if (this.isExcluded(file)) {
+        excluded++;
+        this.log(`Excluded from sync: ${file.fsPath}`);
+        continue;
+      }
+      try {
+        await this.pushFile(file);
+        pushed++;
+      } catch (err) {
+        failed++;
+        this.log(`Failed to push ${file.fsPath}: ${err}`);
+      }
+    }
+    const excludedSummary = excluded > 0 ? `, ${excluded} excluded` : "";
+    const msg = `Sync complete: ${pushed} pushed, ${failed} failed${excludedSummary}`;
+    this.log(msg);
+    if (this.config.showNotifications) {
+      vscode3.window.showInformationMessage(msg);
+    }
+  }
+  handleFileChange(uri) {
+    if (!this.config.autoSync) {
+      return;
+    }
+    if (this.isExcluded(uri)) {
+      return;
+    }
+    const key = uri.toString();
+    const existing = this.debounceTimers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    const timer = setTimeout(async () => {
+      this.debounceTimers.delete(key);
+      if (!await this.fileExists(uri)) {
+        this.log(`Auto-sync skipped (file no longer exists): ${uri.fsPath}`);
+        return;
+      }
+      try {
+        await this.pushFile(uri);
+      } catch (err) {
+        this.log(`Auto-sync failed for ${uri.fsPath}: ${err}`);
+      }
+    }, 300);
+    this.debounceTimers.set(key, timer);
+  }
+  async downloadAll() {
+    if (this.config.fileExtensions.length === 0) {
+      vscode3.window.showWarningMessage(
+        "bitburnerSync.fileExtensions is set to []. Nothing will be downloaded. Remove the setting to fall back to the defaults."
+      );
+      return;
+    }
+    const planResult = await this.buildDownloadPlan();
+    if (planResult === null) {
+      return;
+    }
+    const { entries, skipped } = planResult;
+    let includeExisting = true;
+    const existingRemotes = entries.filter((e) => e.existing).map((e) => e.remote);
+    if (existingRemotes.length > 0) {
+      includeExisting = await this.confirmOverwrite(existingRemotes);
+      if (!includeExisting) {
+        this.log(`Overwrite declined: ${existingRemotes.length} existing local file${existingRemotes.length === 1 ? "" : "s"} kept; new files will still be downloaded`);
+      }
+    }
+    const toDownload = entries.filter((e) => includeExisting || !e.existing);
+    if (toDownload.length === 0 && skipped === 0) {
+      vscode3.window.showWarningMessage("Nothing to download.");
+      return;
+    }
+    let downloaded = 0;
+    let failed = 0;
+    for (const { remote, destUri } of toDownload) {
+      try {
+        const content = await this.api.getFile(remote, this.config.targetServer);
+        const byteLen = Buffer.byteLength(content, "utf8");
+        if (byteLen > MAX_FILE_SIZE_BYTES) {
+          throw new Error(
+            `File exceeds the ${formatBytes(MAX_FILE_SIZE_BYTES)} sync limit (${formatBytes(byteLen)})`
+          );
+        }
+        await vscode3.workspace.fs.writeFile(destUri, Buffer.from(content));
+        downloaded++;
+        this.log(`Downloaded: ${remote}`);
+      } catch (err) {
+        failed++;
+        this.log(`Failed to download ${remote}: ${err}`);
+      }
+    }
+    const summarySkipped = skipped > 0 ? `, ${skipped} skipped` : "";
+    const msg = `Download complete: ${downloaded} downloaded, ${failed} failed${summarySkipped}`;
+    this.log(msg);
+    if (this.config.showNotifications) {
+      vscode3.window.showInformationMessage(msg);
+    }
+  }
+  // Returns the count of remote files that don't yet exist locally, after
+  // the same path/extension filtering downloadAll() applies. Used by the
+  // first-connect prompt in extension.ts to decide whether to ask the user
+  // about pulling files down.
+  async countNewRemoteFiles() {
+    if (this.config.fileExtensions.length === 0) {
+      return 0;
+    }
+    const planResult = await this.buildDownloadPlan({ silent: true });
+    if (planResult === null) {
+      return 0;
+    }
+    return planResult.entries.filter((e) => !e.existing).length;
+  }
+  // Listing + per-name validation + new/existing partition. Shared by
+  // downloadAll() and countNewRemoteFiles() so the two stay in sync on
+  // what counts as a downloadable file. Returns null when the caller
+  // should abort entirely (no workspace, empty listing, server returned
+  // an unreasonable count). When `silent` is true the caller is asking
+  // a question, not running the download — suppress user-facing warnings
+  // and per-skip log spam.
+  async buildDownloadPlan(opts = {}) {
+    const silent = !!opts.silent;
+    const workspaceFolders = vscode3.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      if (silent) {
+        return null;
+      }
+      throw new Error("No workspace folder open");
+    }
+    const rootUri = workspaceFolders[0].uri;
+    const syncDir = this.config.syncDirectory;
+    const destBaseUri = syncDir ? vscode3.Uri.joinPath(rootUri, syncDir) : rootUri;
+    const fileNames = await this.api.getFileNames(this.config.targetServer);
+    if (fileNames.length === 0) {
+      if (!silent) {
+        vscode3.window.showWarningMessage("No files found on Bitburner server.");
+      }
+      return null;
+    }
+    if (fileNames.length > MAX_DOWNLOAD_FILE_COUNT) {
+      if (!silent) {
+        const msg = `Refusing to download: server returned ${fileNames.length} filenames (limit is ${MAX_DOWNLOAD_FILE_COUNT}). This usually indicates a corrupt save or a buggy server. Narrow bitburnerSync.fileExtensions or contact the server admin.`;
+        this.log(msg);
+        vscode3.window.showErrorMessage(msg);
+      }
+      return null;
+    }
+    const allowedExts = this.config.fileExtensions;
+    const entries = [];
+    let skipped = 0;
+    for (const filename of fileNames) {
+      try {
+        validateRemotePath(filename);
+      } catch (err) {
+        skipped++;
+        if (!silent) {
+          this.log(`Skipped (invalid name from server): ${JSON.stringify(filename)} \u2014 ${err instanceof Error ? err.message : err}`);
+        }
+        continue;
+      }
+      if (!matchesAllowedExtension(filename, allowedExts)) {
+        skipped++;
+        if (!silent) {
+          this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${filename}`);
+        }
+        continue;
+      }
+      const relativePath = filename.startsWith("/") ? filename.slice(1) : filename;
+      const destUri = vscode3.Uri.joinPath(destBaseUri, relativePath);
+      entries.push({
+        remote: filename,
+        destUri,
+        existing: await this.fileExists(destUri)
+      });
+    }
+    return { entries, skipped };
+  }
+  async fileExists(uri) {
+    try {
+      await vscode3.workspace.fs.stat(uri);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  allExcludePatterns() {
+    return [...ALWAYS_EXCLUDE, ...this.config.exclude];
+  }
+  isExcluded(uri) {
+    const primary = vscode3.workspace.workspaceFolders?.[0];
+    if (!primary) {
+      return false;
+    }
+    const rel = path3.relative(primary.uri.fsPath, uri.fsPath).replace(/\\/g, "/");
+    if (!rel || rel.startsWith("..") || path3.isAbsolute(rel)) {
+      return false;
+    }
+    return this.allExcludePatterns().some((p) => minimatch(rel, p, { dot: true }));
+  }
+  findFilesExcludeGlob() {
+    const patterns = this.allExcludePatterns();
+    if (patterns.length === 0) {
+      return null;
+    }
+    if (patterns.length === 1) {
+      return patterns[0];
+    }
+    return `{${patterns.join(",")}}`;
+  }
+  async confirmOverwrite(filenames) {
+    const MAX_LIST = 20;
+    const shown = filenames.slice(0, MAX_LIST);
+    const remainder = filenames.length - shown.length;
+    const list = shown.join("\n");
+    const more = remainder > 0 ? `
+\u2026and ${remainder} more` : "";
+    const count = filenames.length;
+    const noun = count === 1 ? "file" : "files";
+    const choice = await vscode3.window.showWarningMessage(
+      `Overwrite ${count} local ${noun}?`,
+      {
+        modal: true,
+        detail: `Downloading from Bitburner will replace the following ${noun}:
+
+${list}${more}
+
+New files (not yet present locally) will be downloaded either way.`
+      },
+      "Overwrite"
+    );
+    return choice === "Overwrite";
+  }
+  async downloadDefinitions() {
+    const content = await this.api.getDefinitionFile();
+    const byteLen = Buffer.byteLength(content, "utf8");
+    if (byteLen > MAX_DEFINITIONS_SIZE_BYTES) {
+      throw new Error(
+        `NetscriptDefinitions.d.ts exceeds the ${formatBytes(MAX_DEFINITIONS_SIZE_BYTES)} sanity limit (${formatBytes(byteLen)})`
+      );
+    }
+    const workspaceFolders = vscode3.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      throw new Error("No workspace folder open");
+    }
+    const rootUri = workspaceFolders[0].uri;
+    const destUri = vscode3.Uri.joinPath(rootUri, "NetscriptDefinitions.d.ts");
+    await vscode3.workspace.fs.writeFile(destUri, Buffer.from(content));
+    this.log("Downloaded NetscriptDefinitions.d.ts");
+    vscode3.window.showInformationMessage("Downloaded NetscriptDefinitions.d.ts to workspace root.");
+    await this.ensureTsConfig(rootUri);
+  }
+  async ensureTsConfig(rootUri) {
+    const tsconfigUri = vscode3.Uri.joinPath(rootUri, "tsconfig.json");
+    const defsEntry = "NetscriptDefinitions.d.ts";
+    let raw;
+    try {
+      const bytes = await vscode3.workspace.fs.readFile(tsconfigUri);
+      raw = Buffer.from(bytes).toString("utf8");
+    } catch {
+      const tsconfig = {
+        compilerOptions: {
+          target: "ES2022",
+          module: "ES2022",
+          moduleResolution: "node",
+          allowJs: true,
+          checkJs: true,
+          noEmit: true
+        },
+        include: ["**/*"],
+        files: [defsEntry]
+      };
+      await vscode3.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(tsconfig, null, 2) + "\n"));
+      this.log("Created tsconfig.json");
+      return;
+    }
+    let strictParsed;
+    try {
+      strictParsed = JSON.parse(raw);
+    } catch {
+    }
+    if (strictParsed) {
+      let files = strictParsed["files"];
+      if (!Array.isArray(files)) {
+        files = [defsEntry];
+        strictParsed["files"] = files;
+      } else if (!files.includes(defsEntry)) {
+        files.push(defsEntry);
+      } else {
+        return;
+      }
+      await vscode3.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(strictParsed, null, 2) + "\n"));
+      this.log("Updated tsconfig.json with NetscriptDefinitions.d.ts");
+      return;
+    }
+    let jsoncParsed;
+    try {
+      jsoncParsed = JSON.parse(stripJsonComments(raw));
+    } catch {
+    }
+    if (jsoncParsed) {
+      const files = jsoncParsed["files"];
+      if (Array.isArray(files) && files.includes(defsEntry)) {
+        return;
+      }
+    }
+    await this.warnManualTsConfigSetup(tsconfigUri, defsEntry, jsoncParsed === void 0);
+  }
+  async warnManualTsConfigSetup(tsconfigUri, defsEntry, unparseable) {
+    const reason = unparseable ? "tsconfig.json could not be parsed" : "tsconfig.json appears to contain comments or trailing commas (JSONC), which the extension will not rewrite";
+    const message = `${reason}. Add "${defsEntry}" to the "files" array manually to enable type hints.`;
+    this.log(`WARN: ${message}`);
+    this.log("Suggested tsconfig.json entry:");
+    this.log(`    "files": ["${defsEntry}"]`);
+    this.log("See the Troubleshooting section of the README for a full example.");
+    const open = "Open tsconfig.json";
+    const show = "Show Instructions";
+    const choice = await vscode3.window.showWarningMessage(message, open, show);
+    if (choice === open) {
+      await vscode3.commands.executeCommand("vscode.open", tsconfigUri);
+    } else if (choice === show) {
+      this.outputChannel.show();
+    }
+  }
+  dispose() {
+    for (const timer of this.debounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.debounceTimers.clear();
+  }
+  log(message) {
+    const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+    this.outputChannel.appendLine(`[${timestamp}] ${message}`);
+  }
+};
+function formatBytes(bytes) {
+  if (bytes < 0) {
+    return "unknown size";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function matchesAllowedExtension(filename, allowed) {
+  const lastDot = filename.lastIndexOf(".");
+  if (lastDot < 0) {
+    return false;
+  }
+  return allowed.includes(filename.slice(lastDot).toLowerCase());
+}
+function stripJsonComments(text) {
+  let out = "";
+  let i = 0;
+  let inString = false;
+  let stringChar = "";
+  while (i < text.length) {
+    const c = text[i];
+    const next = i + 1 < text.length ? text[i + 1] : "";
+    if (inString) {
+      if (c === "\\" && i + 1 < text.length) {
+        out += c + next;
+        i += 2;
+        continue;
+      }
+      if (c === stringChar) {
+        inString = false;
+      }
+      out += c;
+      i++;
+    } else if (c === '"' || c === "'") {
+      inString = true;
+      stringChar = c;
+      out += c;
+      i++;
+    } else if (c === "/" && next === "/") {
+      while (i < text.length && text[i] !== "\n") {
+        i++;
+      }
+    } else if (c === "/" && next === "*") {
+      i += 2;
+      while (i + 1 < text.length && !(text[i] === "*" && text[i + 1] === "/")) {
+        i++;
+      }
+      i += 2;
+    } else if (c === ",") {
+      let j = i + 1;
+      while (j < text.length && (text[j] === " " || text[j] === "	" || text[j] === "\n" || text[j] === "\r")) {
+        j++;
+      }
+      if (j < text.length && (text[j] === "}" || text[j] === "]")) {
+        i++;
+      } else {
+        out += c;
+        i++;
+      }
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
+// src/sync/FileWatcher.ts
+var vscode4 = __toESM(require("vscode"));
+var FileWatcher = class {
+  constructor(syncEngine2, config2) {
+    this.syncEngine = syncEngine2;
+    this.config = config2;
+  }
+  syncEngine;
+  config;
+  fileWatcher = null;
+  disposables = [];
+  start() {
+    this.stop();
+    if (this.config.fileExtensions.length === 0) {
+      return;
+    }
+    const primary = vscode4.workspace.workspaceFolders?.[0];
+    if (!primary) {
+      return;
+    }
+    const pattern = new vscode4.RelativePattern(primary, this.config.fileGlob);
+    this.fileWatcher = vscode4.workspace.createFileSystemWatcher(pattern);
+    this.fileWatcher.onDidChange((uri) => {
+      this.syncEngine.handleFileChange(uri);
+    }, null, this.disposables);
+    this.fileWatcher.onDidCreate((uri) => {
+      this.syncEngine.handleFileChange(uri);
+    }, null, this.disposables);
+    const saveWatcher = vscode4.workspace.onDidSaveTextDocument((doc) => {
+      if (this.matchesExtensions(doc.uri) && this.isInSyncDirectory(doc.uri)) {
+        this.syncEngine.handleFileChange(doc.uri);
+      }
+    });
+    this.disposables.push(saveWatcher);
+  }
+  isInSyncDirectory(uri) {
+    const primary = vscode4.workspace.workspaceFolders?.[0];
+    if (!primary) {
+      return false;
+    }
+    const filePath = uri.fsPath.replace(/\\/g, "/");
+    const folderPath = primary.uri.fsPath.replace(/\\/g, "/");
+    const syncDir = this.config.syncDirectory;
+    const expectedPrefix = syncDir ? `${folderPath}/${syncDir}/` : `${folderPath}/`;
+    return filePath.startsWith(expectedPrefix);
+  }
+  stop() {
+    if (this.fileWatcher) {
+      this.fileWatcher.dispose();
+      this.fileWatcher = null;
+    }
+    this.disposables.forEach((d) => d.dispose());
+    this.disposables.length = 0;
+  }
+  matchesExtensions(uri) {
+    const lastDot = uri.fsPath.lastIndexOf(".");
+    if (lastDot < 0) {
+      return false;
+    }
+    const ext2 = uri.fsPath.slice(lastDot).toLowerCase();
+    return this.config.fileExtensions.includes(ext2);
+  }
+  dispose() {
+    this.stop();
+  }
+};
+
+// src/ui/StatusBar.ts
+var vscode5 = __toESM(require("vscode"));
+var STATE_DISPLAY = {
+  stopped: {
+    text: "$(debug-stop) Bitburner: Off",
+    tooltip: "Click to start sync server"
+  },
+  waiting: {
+    text: "$(watch) Bitburner: Waiting",
+    tooltip: "Server running, waiting for Bitburner to connect"
+  },
+  connected: {
+    text: "$(check) Bitburner: Connected",
+    tooltip: "Connected to Bitburner"
+  },
+  error: {
+    text: "$(error) Bitburner: Error",
+    tooltip: "Server error - click to retry",
+    color: new vscode5.ThemeColor("statusBarItem.errorBackground")
+  }
+};
+var StatusBar = class {
+  item;
+  constructor() {
+    this.item = vscode5.window.createStatusBarItem(vscode5.StatusBarAlignment.Left, 100);
+    this.item.command = "bitburnerSync.toggleServer";
+    this.update("stopped");
+    this.item.show();
+  }
+  update(state) {
+    const display = STATE_DISPLAY[state];
+    this.item.text = display.text;
+    this.item.tooltip = display.tooltip;
+    this.item.backgroundColor = display.color;
+  }
+  dispose() {
+    this.item.dispose();
+  }
+};
+
+// src/extension.ts
+var wsServer;
+var rpcClient;
+var api;
+var config;
+var syncEngine;
+var fileWatcher;
+var statusBar;
+var outputChannel;
+var FIRST_INSTALL_KEY = "bitburnerSync.hasOpenedConfigOnFirstInstall";
+var FIRST_CONNECT_KEY = "bitburnerSync.hasConnectedBefore";
+async function startServer() {
+  if (wsServer.state !== "stopped" && wsServer.state !== "error") {
+    vscode6.window.showInformationMessage("Sync server is already running.");
+    return;
+  }
+  try {
+    await wsServer.start(config.port);
+    fileWatcher.start();
+    vscode6.window.showInformationMessage("In-game under Options->Remote API, enter that port and hit Connect.");
+    vscode6.window.showInformationMessage(`Bitburner sync server started on port ${config.port}.`);
+  } catch (err) {
+    vscode6.window.showErrorMessage(`Failed to start server: ${err}`);
+  }
+}
+async function stopServer() {
+  fileWatcher.stop();
+  await wsServer.stop();
+  vscode6.window.showInformationMessage("Bitburner sync server stopped.");
+}
+async function ensureServerStarted() {
+  if (wsServer.state === "stopped") {
+    await startServer();
+  }
+}
+function activate(context) {
+  outputChannel = vscode6.window.createOutputChannel("Bitburner Sync");
+  config = new Configuration();
+  warnIfMultiRoot(outputChannel);
+  warnIfSyncDirectoryUnsafe(outputChannel, config);
+  wsServer = new WebSocketServer2();
+  rpcClient = new JsonRpcClient(wsServer);
+  api = new BitburnerApi(rpcClient, config.targetServer);
+  syncEngine = new SyncEngine(api, config, outputChannel);
+  fileWatcher = new FileWatcher(syncEngine, config);
+  statusBar = new StatusBar();
+  wsServer.on("stateChanged", (state) => {
+    statusBar.update(state);
+  });
+  wsServer.on("error", (err) => {
+    outputChannel.appendLine(`WebSocket server error: ${err instanceof Error ? err.message : err}`);
+  });
+  wsServer.on("connected", async () => {
+    outputChannel.appendLine("Bitburner connected.");
+    if (config.autoDownloadDefinitions) {
+      try {
+        await syncEngine.downloadDefinitions();
+      } catch (err) {
+        outputChannel.appendLine(`Auto-download definitions failed: ${err}`);
+      }
+    }
+    await maybePromptFirstConnectDownload(context);
+  });
+  wsServer.on("disconnected", () => {
+    outputChannel.appendLine("Bitburner disconnected.");
+  });
+  context.subscriptions.push(
+    vscode6.commands.registerCommand("bitburnerSync.startServer", startServer),
+    vscode6.commands.registerCommand("bitburnerSync.stopServer", stopServer),
+    vscode6.commands.registerCommand("bitburnerSync.toggleServer", () => {
+      const offlike = wsServer.state === "stopped" || wsServer.state === "error";
+      return offlike ? startServer() : stopServer();
+    }),
+    vscode6.commands.registerCommand("bitburnerSync.syncFile", async () => {
+      const editor = vscode6.window.activeTextEditor;
+      if (!editor) {
+        vscode6.window.showWarningMessage("No active file to sync.");
+        return;
+      }
+      await ensureServerStarted();
+      if (!wsServer.isConnected) {
+        vscode6.window.showWarningMessage("Not connected to Bitburner.");
+        return;
+      }
+      try {
+        await syncEngine.pushFile(editor.document.uri);
+      } catch (err) {
+        vscode6.window.showErrorMessage(`Sync failed: ${err}`);
+      }
+    }),
+    vscode6.commands.registerCommand("bitburnerSync.syncAll", async () => {
+      await ensureServerStarted();
+      if (!wsServer.isConnected) {
+        vscode6.window.showWarningMessage("Not connected to Bitburner.");
+        return;
+      }
+      try {
+        await syncEngine.syncAll();
+      } catch (err) {
+        vscode6.window.showErrorMessage(`Sync all failed: ${err}`);
+      }
+    }),
+    vscode6.commands.registerCommand("bitburnerSync.getDefinitions", async () => {
+      await ensureServerStarted();
+      if (!wsServer.isConnected) {
+        vscode6.window.showWarningMessage("Not connected to Bitburner.");
+        return;
+      }
+      try {
+        await syncEngine.downloadDefinitions();
+      } catch (err) {
+        vscode6.window.showErrorMessage(`Failed to download definitions: ${err}`);
+      }
+    }),
+    vscode6.commands.registerCommand("bitburnerSync.downloadAll", async () => {
+      await ensureServerStarted();
+      if (!wsServer.isConnected) {
+        vscode6.window.showWarningMessage("Not connected to Bitburner.");
+        return;
+      }
+      try {
+        await syncEngine.downloadAll();
+      } catch (err) {
+        vscode6.window.showErrorMessage(`Failed to download files: ${err}`);
+      }
+    }),
+    outputChannel,
+    statusBar,
+    { dispose: () => syncEngine.dispose() },
+    { dispose: () => fileWatcher.dispose() },
+    { dispose: () => rpcClient.dispose() },
+    // Return the Promise so VS Code awaits port release on
+    // reload/upgrade. Without this the next activation can race the
+    // close callback and hit EADDRINUSE binding to the same port.
+    { dispose: () => wsServer.stop() }
+  );
+  context.subscriptions.push(
+    vscode6.workspace.onDidChangeConfiguration(async (e) => {
+      if (!e.affectsConfiguration("bitburnerSync")) {
+        return;
+      }
+      if (e.affectsConfiguration("bitburnerSync.syncDirectory")) {
+        warnIfSyncDirectoryUnsafe(outputChannel, config);
+      }
+      if (wsServer.state === "stopped") {
+        return;
+      }
+      outputChannel.appendLine("Configuration changed, restarting sync server...");
+      await stopServer();
+      await startServer();
+    })
+  );
+  if (config.autoStart) {
+    startServer();
+  }
+  void maybeOpenSettingsOnFirstInstall(context);
+}
+async function maybeOpenSettingsOnFirstInstall(context) {
+  if (context.globalState.get(FIRST_INSTALL_KEY, false)) {
+    return;
+  }
+  await context.globalState.update(FIRST_INSTALL_KEY, true);
+  try {
+    await vscode6.commands.executeCommand("workbench.action.openSettings", "@ext:bitburner-file-sync-plugin");
+  } catch (err) {
+    outputChannel.appendLine(`Could not open settings UI: ${err}`);
+  }
+}
+async function maybePromptFirstConnectDownload(context) {
+  if (context.workspaceState.get(FIRST_CONNECT_KEY, false)) {
+    return;
+  }
+  await context.workspaceState.update(FIRST_CONNECT_KEY, true);
+  try {
+    const newCount = await syncEngine.countNewRemoteFiles();
+    if (newCount <= 0) {
+      return;
+    }
+    const noun = newCount === 1 ? "script" : "scripts";
+    const choice = await vscode6.window.showInformationMessage(
+      `Bitburner has ${newCount} ${noun} not in this workspace. Download them now?`,
+      "Download",
+      "Not now"
+    );
+    if (choice === "Download") {
+      await syncEngine.downloadAll();
+    }
+  } catch (err) {
+    outputChannel.appendLine(`First-connect download prompt failed: ${err}`);
+  }
+}
+function deactivate() {
+}
+function warnIfMultiRoot(channel) {
+  const folders = vscode6.workspace.workspaceFolders;
+  if (!folders || folders.length <= 1) {
+    return;
+  }
+  const first = folders[0];
+  const msg = `Bitburner Sync: multi-root workspace detected (${folders.length} folders). Only "${first.name}" (${first.uri.fsPath}) will be synced; files in other folders are ignored.`;
+  channel.appendLine(msg);
+  vscode6.window.showWarningMessage(msg);
+}
+function warnIfSyncDirectoryUnsafe(channel, cfg) {
+  const err = cfg.syncDirectoryError();
+  if (!err) {
+    return;
+  }
+  channel.appendLine(err);
+  vscode6.window.showWarningMessage(err);
+}
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  activate,
+  deactivate
+});
+//# sourceMappingURL=extension.js.map
