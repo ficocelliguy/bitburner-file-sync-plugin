@@ -495,6 +495,10 @@ export type ExtensionContext = {
     subscriptions: { dispose(): unknown }[];
     globalState: Memento;
     workspaceState: Memento;
+    // Real vscode.ExtensionContext exposes the install directory; the
+    // production code reads it to locate the bundled @types/ copies under
+    // dist/types. Tests give a stable placeholder so path.join doesn't crash.
+    extensionPath: string;
 };
 
 // Constructs an in-memory Memento, mirroring vscode.ExtensionContext.globalState /

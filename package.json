@@ -4,7 +4,7 @@
   "description": "Sync local workspace files to Bitburner via the Remote File API",
   "repository": "https://github.com/ficocelliguy/bitburner-file-sync-plugin",
   "publisher": "FicocelliGuy",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "engines": {
     "vscode": "^1.118.0"
   },
@@ -147,6 +147,8 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
+    "@types/react": "^17.0.93",
+    "@types/react-dom": "^17.0.26",
     "@types/vscode": "^1.118.0",
     "@types/ws": "^8.18.1",
     "@vscode/test-cli": "^0.0.12",

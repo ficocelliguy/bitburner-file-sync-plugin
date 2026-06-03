@@ -20,6 +20,7 @@ function makeContext(opts: { globalSeed?: Record<string, unknown>; workspaceSeed
         subscriptions: [],
         globalState: _makeMemento(opts.globalSeed),
         workspaceState: _makeMemento(opts.workspaceSeed),
+        extensionPath: '/fake/extension/path',
     };
 }
 

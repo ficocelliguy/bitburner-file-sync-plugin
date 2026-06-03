@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { WebSocketServer } from './server/WebSocketServer';
 import { JsonRpcClient } from './server/JsonRpcClient';
@@ -62,7 +63,12 @@ export function activate(context: vscode.ExtensionContext): void {
     wsServer = new WebSocketServer();
     rpcClient = new JsonRpcClient(wsServer);
     api = new BitburnerApi(rpcClient, config.targetServer);
-    syncEngine = new SyncEngine(api, config, outputChannel);
+    // dist/types/ is populated by esbuild's copyBundledTypes step. Pass
+    // the absolute path so user tsconfigs can resolve `react` / `react-dom`
+    // imports against the bundled @types copies instead of forcing each
+    // user to install them.
+    const bundledTypesDir = path.join(context.extensionPath, 'dist', 'types');
+    syncEngine = new SyncEngine(api, config, outputChannel, bundledTypesDir);
     fileWatcher = new FileWatcher(syncEngine, config);
     statusBar = new StatusBar();
 
@@ -200,6 +206,13 @@ export function activate(context: vscode.ExtensionContext): void {
     // available. globalState (not workspaceState) so we only do this once
     // per VS Code install, not on every new workspace.
     void maybeOpenSettingsOnFirstInstall(context);
+
+    // Existing-user migration: if a previous version of the extension left
+    // a NetscriptDefinitions.d.ts in the workspace, regenerate the globals
+    // shim and patch tsconfig so `NS` becomes a global and `@ns` resolves —
+    // without waiting for the user to reconnect to the game. Fire-and-forget;
+    // failures are logged inside the call.
+    void syncEngine.ensureTypeDefinitionsSetup();
 }
 
 async function maybeOpenSettingsOnFirstInstall(context: vscode.ExtensionContext): Promise<void> {

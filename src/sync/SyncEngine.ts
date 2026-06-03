@@ -12,11 +12,24 @@ import { PathMapper, validateRemotePath } from './PathMapper';
 // .vscode/settings.json or node_modules contents.
 const ALWAYS_EXCLUDE = [
     '**/NetscriptDefinitions.d.ts',
+    '**/NetscriptGlobals.d.ts',
     '.git/**',
     '.gitignore',
     '.vscode/**',
     'node_modules/**',
 ];
+
+// Files the extension writes into the workspace root to wire up editor
+// type hints. NetscriptDefinitions.d.ts is downloaded verbatim from the
+// game; NetscriptGlobals.d.ts is generated from it (see writeGlobalsShim)
+// and re-exports the top-level Netscript types into the global scope so
+// scripts can use `NS` without importing.
+const DEFINITIONS_FILE = 'NetscriptDefinitions.d.ts';
+const GLOBALS_FILE = 'NetscriptGlobals.d.ts';
+// Path alias used by the bitburner-official typescript template
+// (`import { NS } from '@ns'`). We mirror that mapping in tsconfig so
+// existing scripts that follow the convention keep resolving.
+const NS_PATH_ALIAS = '@ns';
 
 // Hard cap on the size of any single file synced to Bitburner. The Remote
 // API will technically accept larger payloads, but a 1 MB script almost
@@ -50,14 +63,24 @@ export class SyncEngine {
     private readonly pathMapper: PathMapper;
     private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private readonly outputChannel: vscode.OutputChannel;
+    // Absolute filesystem path to the directory holding the extension's
+    // bundled @types packages (dist/types). Used to construct absolute
+    // `paths` entries in user tsconfigs that resolve `react`/`react-dom`
+    // to the shipped copies instead of requiring the user to install
+    // anything. Undefined when the consumer (e.g. tests) doesn't need
+    // bundled types; in that case the shim falls back to typing
+    // React/ReactDOM as `any`.
+    private readonly bundledTypesDir: string | undefined;
 
     constructor(
         private readonly api: BitburnerApi,
         private readonly config: Configuration,
-        outputChannel: vscode.OutputChannel
+        outputChannel: vscode.OutputChannel,
+        bundledTypesDir?: string,
     ) {
         this.pathMapper = new PathMapper(config);
         this.outputChannel = outputChannel;
+        this.bundledTypesDir = bundledTypesDir;
     }
 
     async pushFile(uri: vscode.Uri): Promise<void> {
@@ -475,14 +498,14 @@ export class SyncEngine {
     }
 
     async downloadDefinitions(): Promise<void> {
-        const content = await this.api.getDefinitionFile();
+        const rawContent = await this.api.getDefinitionFile();
         // The real NetscriptDefinitions.d.ts is well under 1 MB today, but
         // give it headroom for future growth — the cap exists to bound a
         // hostile/buggy server, not to second-guess the game.
-        const byteLen = Buffer.byteLength(content, 'utf8');
+        const byteLen = Buffer.byteLength(rawContent, 'utf8');
         if (byteLen > MAX_DEFINITIONS_SIZE_BYTES) {
             throw new Error(
-                `NetscriptDefinitions.d.ts exceeds the ${formatBytes(MAX_DEFINITIONS_SIZE_BYTES)} sanity limit (${formatBytes(byteLen)})`
+                `${DEFINITIONS_FILE} exceeds the ${formatBytes(MAX_DEFINITIONS_SIZE_BYTES)} sanity limit (${formatBytes(byteLen)})`
             );
         }
 
@@ -491,18 +514,124 @@ export class SyncEngine {
             throw new Error('No workspace folder open');
         }
 
-        const rootUri = workspaceFolders[0].uri;
-        const destUri = vscode.Uri.joinPath(rootUri, 'NetscriptDefinitions.d.ts');
-        await vscode.workspace.fs.writeFile(destUri, Buffer.from(content));
-        this.log('Downloaded NetscriptDefinitions.d.ts');
-        vscode.window.showInformationMessage('Downloaded NetscriptDefinitions.d.ts to workspace root.');
+        // Upstream's NetscriptDefinitions.d.ts marks types as `@public` in
+        // JSDoc but doesn't always actually `export` them (e.g.
+        // AutocompleteData, ReactNode, ReactElement). In a TS module those
+        // unexported types become module-private, which breaks both
+        // `import { AutocompleteData } from '@ns'` and the globals shim. We
+        // patch the downloaded file to add `export` to every top-level
+        // interface/type/enum/class declaration that's missing it. The
+        // patch is idempotent — re-running it on already-exported lines is
+        // a no-op — so re-downloads don't drift.
+        const content = ensureAllTopLevelDeclarationsExported(rawContent);
 
+        const rootUri = workspaceFolders[0].uri;
+        const destUri = vscode.Uri.joinPath(rootUri, DEFINITIONS_FILE);
+        await vscode.workspace.fs.writeFile(destUri, Buffer.from(content));
+        this.log(`Downloaded ${DEFINITIONS_FILE}`);
+        vscode.window.showInformationMessage(`Downloaded ${DEFINITIONS_FILE} to workspace root.`);
+
+        await this.writeGlobalsShim(rootUri, content);
         await this.ensureTsConfig(rootUri);
+    }
+
+    /**
+     * One-shot migration hook called from `activate()`. If the workspace
+     * already contains a `NetscriptDefinitions.d.ts` from a previous
+     * (pre-globals) version of the extension, regenerate
+     * `NetscriptGlobals.d.ts` from it and patch `tsconfig.json` so the
+     * global-`NS` and `@ns` path-alias setup is in place without requiring
+     * the user to reconnect to the game and re-download. Returns silently
+     * (no errors, no notifications) when there's nothing to migrate.
+     */
+    async ensureTypeDefinitionsSetup(): Promise<void> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return;
+        }
+        const rootUri = workspaceFolders[0].uri;
+        const defsUri = vscode.Uri.joinPath(rootUri, DEFINITIONS_FILE);
+
+        let raw: string;
+        try {
+            const bytes = await vscode.workspace.fs.readFile(defsUri);
+            raw = Buffer.from(bytes).toString('utf8');
+        } catch {
+            // No existing definitions file — nothing to migrate. The normal
+            // download path will set everything up when the user connects.
+            return;
+        }
+
+        try {
+            // Apply the same export-everything patch to a previously-downloaded
+            // d.ts so existing users get the AutocompleteData / ReactNode /
+            // ReactElement fix without needing to reconnect.
+            const patched = ensureAllTopLevelDeclarationsExported(raw);
+            if (patched !== raw) {
+                await vscode.workspace.fs.writeFile(defsUri, Buffer.from(patched));
+                this.log(`Patched ${DEFINITIONS_FILE} to export all top-level types`);
+            }
+            await this.writeGlobalsShim(rootUri, patched);
+            await this.ensureTsConfig(rootUri);
+        } catch (err) {
+            // Migration is best-effort: it must never block extension
+            // activation. Surface the failure in the output channel so the
+            // user can diagnose if they notice type hints aren't working.
+            this.log(`Type-definitions setup failed: ${err instanceof Error ? err.message : err}`);
+        }
+    }
+
+    private async writeGlobalsShim(rootUri: vscode.Uri, defsContent: string): Promise<void> {
+        const names = extractTopLevelExportNames(defsContent);
+        if (names.length === 0) {
+            // The d.ts is empty, truncated, or malformed. Don't write an
+            // empty shim that would mask the underlying problem — let
+            // ensureTsConfig still wire up the @ns alias as a fallback.
+            this.log(`Skipped ${GLOBALS_FILE}: no top-level exports parsed from ${DEFINITIONS_FILE}`);
+            return;
+        }
+        const body = renderGlobalsShim(names, this.bundledTypesDir !== undefined);
+        const uri = vscode.Uri.joinPath(rootUri, GLOBALS_FILE);
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(body));
+        const reactNote = this.bundledTypesDir !== undefined
+            ? ', React/ReactDOM typed via bundled @types'
+            : ', React/ReactDOM typed as any';
+        this.log(`Wrote ${GLOBALS_FILE} (${names.length} Netscript types globalized${reactNote})`);
     }
 
     private async ensureTsConfig(rootUri: vscode.Uri): Promise<void> {
         const tsconfigUri = vscode.Uri.joinPath(rootUri, 'tsconfig.json');
-        const defsEntry = 'NetscriptDefinitions.d.ts';
+        // `@ns` is add-if-missing so users who deliberately point it at a
+        // different file aren't overwritten.
+        const defaultPaths: Record<string, string[]> = { [NS_PATH_ALIAS]: [DEFINITIONS_FILE] };
+        // `react` and `react-dom` are *owned*: their values are absolute
+        // paths into the installed extension directory, which moves on
+        // every extension upgrade. We always rewrite them to the current
+        // location so users don't end up with stale paths after upgrades.
+        // Users who want their own React types should install @types/react
+        // and remove these entries — we'll add them back, but that's the
+        // signal that we manage them.
+        const ownedPaths: Record<string, string[]> = {};
+        if (this.bundledTypesDir !== undefined) {
+            // Use forward slashes in tsconfig paths even on Windows. TS's
+            // path resolver handles both, but forward slashes match the
+            // convention TS itself emits and avoid surprising users who
+            // read the file.
+            const norm = this.bundledTypesDir.replace(/\\/g, '/');
+            ownedPaths['react'] = [`${norm}/react`];
+            ownedPaths['react-dom'] = [`${norm}/react-dom`];
+        }
+        const wanted: WantedTsconfig = {
+            files: [DEFINITIONS_FILE, GLOBALS_FILE],
+            paths: defaultPaths,
+            ownedPaths,
+            // Compiler options the extension *adds if missing*. We never
+            // overwrite a user-set value, so a custom `jsx` mode survives.
+            // `jsx: "react"` matches the Bitburner runtime, which uses the
+            // classic React.createElement factory (React is a runtime global,
+            // see NetscriptGlobals.d.ts).
+            compilerOptions: { jsx: 'react' },
+        };
 
         let raw: string | undefined;
         try {
@@ -518,9 +647,11 @@ export class SyncEngine {
                     allowJs: true,
                     checkJs: true,
                     noEmit: true,
+                    jsx: 'react',
+                    paths: { ...wanted.paths, ...wanted.ownedPaths },
                 },
                 include: ['**/*'],
-                files: [defsEntry],
+                files: wanted.files,
             };
             await vscode.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(tsconfig, null, 2) + '\n'));
             this.log('Created tsconfig.json');
@@ -536,17 +667,11 @@ export class SyncEngine {
         }
 
         if (strictParsed) {
-            let files = strictParsed['files'] as string[] | undefined;
-            if (!Array.isArray(files)) {
-                files = [defsEntry];
-                strictParsed['files'] = files;
-            } else if (!files.includes(defsEntry)) {
-                files.push(defsEntry);
-            } else {
-                return; // already has it
+            const changed = mergeWantedIntoTsconfig(strictParsed, wanted);
+            if (changed) {
+                await vscode.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(strictParsed, null, 2) + '\n'));
+                this.log(`Updated tsconfig.json with ${wanted.files.join(', ')}, "${NS_PATH_ALIAS}" path alias, and jsx mode`);
             }
-            await vscode.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(strictParsed, null, 2) + '\n'));
-            this.log('Updated tsconfig.json with NetscriptDefinitions.d.ts');
             return;
         }
 
@@ -560,30 +685,31 @@ export class SyncEngine {
             // unparseable
         }
 
-        if (jsoncParsed) {
-            const files = jsoncParsed['files'];
-            if (Array.isArray(files) && files.includes(defsEntry)) {
-                return; // already wired up
-            }
+        if (jsoncParsed && tsconfigHasAllWanted(jsoncParsed, wanted)) {
+            return;
         }
 
-        // Either JSONC-without-the-entry or unparseable. Don't risk corrupting
+        // Either JSONC-missing-an-entry or unparseable. Don't risk corrupting
         // the file; tell the user what to add.
-        await this.warnManualTsConfigSetup(tsconfigUri, defsEntry, jsoncParsed === undefined);
+        await this.warnManualTsConfigSetup(tsconfigUri, wanted, jsoncParsed === undefined);
     }
 
     private async warnManualTsConfigSetup(
         tsconfigUri: vscode.Uri,
-        defsEntry: string,
+        wanted: WantedTsconfig,
         unparseable: boolean
     ): Promise<void> {
         const reason = unparseable
             ? 'tsconfig.json could not be parsed'
             : 'tsconfig.json appears to contain comments or trailing commas (JSONC), which the extension will not rewrite';
-        const message = `${reason}. Add "${defsEntry}" to the "files" array manually to enable type hints.`;
+        const message = `${reason}. Add the entries below manually to enable Netscript type hints.`;
         this.log(`WARN: ${message}`);
-        this.log('Suggested tsconfig.json entry:');
-        this.log(`    "files": ["${defsEntry}"]`);
+        this.log('Suggested tsconfig.json entries:');
+        this.log(`    "files": ${JSON.stringify(wanted.files)}`);
+        const mergedPaths = { ...wanted.paths, ...wanted.ownedPaths };
+        this.log(`    "compilerOptions": { "paths": ${JSON.stringify(mergedPaths)}, ${
+            Object.entries(wanted.compilerOptions).map(([k, v]) => `"${k}": ${JSON.stringify(v)}`).join(', ')
+        } }`);
         this.log('See the Troubleshooting section of the README for a full example.');
 
         const open = 'Open tsconfig.json';
@@ -709,4 +835,232 @@ function stripJsonComments(text: string): string {
         }
     }
     return out;
+}
+
+// Idempotent post-process pass over the downloaded NetscriptDefinitions.d.ts:
+// prepend `export ` to any top-level `interface|type|enum|class` declaration
+// that's missing it.
+//
+// Upstream tags many declarations with `@public` in JSDoc but leaves the
+// `export` keyword off (e.g. `interface AutocompleteData`, `type ReactNode`,
+// `interface ReactElement`). In a module that makes them module-private and
+// breaks both `import { AutocompleteData } from '@ns'` and the globals shim.
+// We restore the author's documented intent by exporting them.
+//
+// The regex anchors at start-of-line in multiline mode, so it skips
+// already-exported declarations (those start with `e` from `export`) and
+// nested declarations inside namespaces / `declare global` blocks (those
+// have leading whitespace). Block-string false positives are essentially
+// impossible in a generated d.ts.
+function ensureAllTopLevelDeclarationsExported(source: string): string {
+    return source.replace(
+        /^(?:interface|type|enum|class|abstract\s+class)\s+\w+/gm,
+        'export $&'
+    );
+}
+
+// Extract the names of all top-level `export interface|type|enum|class` declarations
+// from a TypeScript declaration source. Used to build the global re-export shim.
+//
+// A regex rather than the TS compiler API is intentional: the bitburner d.ts
+// format is stable and well-behaved, and we don't want to pay the ~60 MB
+// runtime cost of pulling in typescript just to walk one file. The failure
+// mode of mis-parsing is benign — at worst a type goes un-shimmed and the
+// user falls back to `import { X } from '@ns'`, which the tsconfig paths
+// alias also wires up.
+function extractTopLevelExportNames(source: string): string[] {
+    const seen = new Set<string>();
+    const names: string[] = [];
+    const re = /^export\s+(?:declare\s+)?(?:interface|type|enum|class|abstract\s+class)\s+(\w+)/gm;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(source)) !== null) {
+        const name = m[1];
+        if (!seen.has(name)) {
+            seen.add(name);
+            names.push(name);
+        }
+    }
+    return names;
+}
+
+// Render the NetscriptGlobals.d.ts shim that re-exports the d.ts's top-level
+// types into the global scope, plus the React/ReactDOM runtime globals that
+// Bitburner exposes implicitly. Generated content — never hand-edited.
+//
+// When `hasBundledReactTypes` is true the extension's tsconfig.paths alias
+// resolves `react` and `react-dom` to copies of @types/react@^17 and
+// @types/react-dom@^17 bundled with the extension. The shim then types
+// `React` and `ReactDOM` via `typeof import("react"|"react-dom")` for
+// full IntelliSense. When false, they fall back to `any` — used by tests
+// that don't ship bundled types and as a defensive fallback.
+function renderGlobalsShim(names: string[], hasBundledReactTypes: boolean): string {
+    const defsModuleSpecifier = './' + DEFINITIONS_FILE.replace(/\.d\.ts$/, '');
+    const reactDecl = hasBundledReactTypes
+        ? [
+            '    // Bitburner runtime globals — exposed by the game, not imported.',
+            '    // Typed via the @types/react@^17 / @types/react-dom@^17 copies that',
+            '    // ship with the extension (see tsconfig.compilerOptions.paths).',
+            '    const React: typeof import("react");',
+            '    const ReactDOM: typeof import("react-dom");',
+        ]
+        : [
+            '    // Bitburner runtime globals — exposed by the game, not imported.',
+            '    // eslint-disable-next-line @typescript-eslint/no-explicit-any',
+            '    const React: any;',
+            '    // eslint-disable-next-line @typescript-eslint/no-explicit-any',
+            '    const ReactDOM: any;',
+        ];
+    const reactHeaderNote = hasBundledReactTypes
+        ? '// React and ReactDOM are also declared as globals here, typed via the bundled\n// @types/react@^17 / @types/react-dom@^17 copies shipped with the extension.'
+        : '// React and ReactDOM are also declared as globals here because the Bitburner\n// runtime exposes them implicitly. Typed as `any` — install @types/react and\n// override these declarations for stricter typing.';
+    const lines = [
+        '// AUTO-GENERATED by the Bitburner File Sync extension. DO NOT EDIT.',
+        '//',
+        '// Re-exports the Netscript API\'s top-level types into the global scope so',
+        '// you can write `function main(ns: NS)` without importing anything. The list',
+        `// below is regenerated each time \`${DEFINITIONS_FILE}\` is downloaded, so it`,
+        '// stays in sync as Bitburner adds APIs.',
+        '//',
+        ...reactHeaderNote.split('\n'),
+        '',
+        `import type * as _NS from "${defsModuleSpecifier}";`,
+        '',
+        'declare global {',
+        ...names.map(n => `    type ${n} = _NS.${n};`),
+        '',
+        ...reactDecl,
+        '}',
+        '',
+        'export {};',
+        '',
+    ];
+    return lines.join('\n');
+}
+
+// Compiler options + files + paths the extension wants in every tsconfig.
+// `compilerOptions` and `paths` here only contain values the extension
+// *adds when missing*; existing user values are preserved. `ownedPaths`
+// are values the extension *always* writes, overwriting any prior value —
+// used for entries whose target is a machine-specific absolute path that
+// can change between extension upgrades (currently `react` / `react-dom`).
+interface WantedTsconfig {
+    files: string[];
+    paths: Record<string, string[]>;
+    ownedPaths: Record<string, string[]>;
+    compilerOptions: Record<string, unknown>;
+}
+
+// Add the wanted `files` entries, `compilerOptions.paths` aliases, and any
+// missing `compilerOptions` keys to an already-parsed tsconfig object.
+// Mutates `cfg` in place. Returns true iff any change was made. Existing
+// values are never overwritten — we only add what's missing — so user
+// customizations (their own `paths` aliases, a different `jsx` mode, etc.)
+// survive intact.
+function mergeWantedIntoTsconfig(
+    cfg: Record<string, unknown>,
+    wanted: WantedTsconfig,
+): boolean {
+    let changed = false;
+
+    let files = cfg['files'];
+    if (!Array.isArray(files)) {
+        files = [];
+        cfg['files'] = files;
+        changed = true;
+    }
+    const filesArr = files as string[];
+    for (const entry of wanted.files) {
+        if (!filesArr.includes(entry)) {
+            filesArr.push(entry);
+            changed = true;
+        }
+    }
+
+    let co = cfg['compilerOptions'];
+    if (!co || typeof co !== 'object' || Array.isArray(co)) {
+        co = {};
+        cfg['compilerOptions'] = co;
+        changed = true;
+    }
+    const coObj = co as Record<string, unknown>;
+
+    for (const [key, value] of Object.entries(wanted.compilerOptions)) {
+        if (coObj[key] === undefined) {
+            coObj[key] = value;
+            changed = true;
+        }
+    }
+
+    let paths = coObj['paths'];
+    if (!paths || typeof paths !== 'object' || Array.isArray(paths)) {
+        paths = {};
+        coObj['paths'] = paths;
+        changed = true;
+    }
+    const pathsObj = paths as Record<string, unknown>;
+    for (const [alias, target] of Object.entries(wanted.paths)) {
+        if (!Array.isArray(pathsObj[alias])) {
+            pathsObj[alias] = target;
+            changed = true;
+        }
+    }
+    // ownedPaths overwrite unconditionally — these are absolute paths
+    // pointing into the extension directory, which changes on upgrade.
+    for (const [alias, target] of Object.entries(wanted.ownedPaths)) {
+        const existing = pathsObj[alias];
+        if (!Array.isArray(existing) || existing.length !== target.length || existing.some((v, i) => v !== target[i])) {
+            pathsObj[alias] = target;
+            changed = true;
+        }
+    }
+
+    return changed;
+}
+
+// Mirror of mergeWantedIntoTsconfig for the JSONC detection path: returns
+// true iff every wanted field is already present in `cfg`. Used to decide
+// whether to silently accept the user's JSONC tsconfig or warn them to
+// patch it manually.
+function tsconfigHasAllWanted(
+    cfg: Record<string, unknown>,
+    wanted: WantedTsconfig,
+): boolean {
+    const files = cfg['files'];
+    if (!Array.isArray(files)) {
+        return false;
+    }
+    for (const entry of wanted.files) {
+        if (!files.includes(entry)) {
+            return false;
+        }
+    }
+    const co = cfg['compilerOptions'];
+    if (!co || typeof co !== 'object') {
+        return false;
+    }
+    const coObj = co as Record<string, unknown>;
+    for (const key of Object.keys(wanted.compilerOptions)) {
+        if (coObj[key] === undefined) {
+            return false;
+        }
+    }
+    const paths = coObj['paths'];
+    if (!paths || typeof paths !== 'object') {
+        return false;
+    }
+    const pathsObj = paths as Record<string, unknown>;
+    for (const alias of Object.keys(wanted.paths)) {
+        if (!Array.isArray(pathsObj[alias])) {
+            return false;
+        }
+    }
+    // Owned paths must match the current target exactly (i.e., no stale
+    // path left over from a previous extension install location).
+    for (const [alias, target] of Object.entries(wanted.ownedPaths)) {
+        const existing = pathsObj[alias];
+        if (!Array.isArray(existing) || existing.length !== target.length || existing.some((v, i) => v !== target[i])) {
+            return false;
+        }
+    }
+    return true;
 }

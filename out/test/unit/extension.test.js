@@ -44,6 +44,7 @@ function makeContext(opts = {}) {
         subscriptions: [],
         globalState: _makeMemento(opts.globalSeed),
         workspaceState: _makeMemento(opts.workspaceSeed),
+        extensionPath: '/fake/extension/path',
     };
 }
 function disposeAll(ctx) {

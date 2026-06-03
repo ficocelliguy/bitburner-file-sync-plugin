@@ -75,6 +75,7 @@ By default, the extension syncs every workspace file whose extension is in `bitb
 - **`bitburnerSync.exclude`.** Your own list of additional workspace-relative glob patterns.
 - **Baseline:** These paths are *always* excluded:
   - `NetscriptDefinitions.d.ts` (the local type-hint file)
+  - `NetscriptGlobals.d.ts` (the auto-generated global-scope shim for the type-hint file)
   - `.git/**`
   - `.gitignore`
   - `.vscode/**`
@@ -118,7 +119,11 @@ Note: `*.js` only matches `.js` files at the workspace root. To exclude `.js` fi
 
 ## Type Definitions
 
-When Bitburner connects (or on demand via the command), the extension downloads `NetscriptDefinitions.d.ts` to your workspace root and creates/updates a `tsconfig.json` so your editor provides autocomplete and type checking for the Netscript API.
+When Bitburner connects (or on demand via the command), the extension downloads `NetscriptDefinitions.d.ts` and sets up `NetscriptGlobals.d.ts` in your workspace root, and creates/updates a `tsconfig.json`, so your editor provides autocomplete and type checking for the Netscript API. Then you can use `NS` (and other Netscript types like `Server`, `AutocompleteData`, `ReactNode`, …) directly in your scripts without importing anything.
+
+For compatibility with the [bitburner-official typescript template](https://github.com/bitburner-official/typescript-template) convention, the extension also adds a `paths` alias so `import { NS } from '@ns'` resolves to the local `NetscriptDefinitions.d.ts`.
+
+`React` and `ReactDOM` are also exposed as ambient globals (matching the in-game runtime), so you can call `React.useState` or use JSX/TSX without importing React.
 
 ## Troubleshooting
 
@@ -132,7 +137,7 @@ On `Bitburner: Sync All Files`, oversized files are counted in the `N failed` to
 
 The extension will only rewrite `tsconfig.json` when it parses as strict JSON. If your file contains comments (`//`, `/* */`) or trailing commas — i.e. it's JSONC — the extension leaves it alone to avoid stripping your formatting, and asks you to wire the type definitions in manually.
 
-To enable type hints, make sure `NetscriptDefinitions.d.ts` is in the `files` array at the top level of your `tsconfig.json`. A minimal working config looks like:
+To enable type hints, make sure `NetscriptDefinitions.d.ts` and `NetscriptGlobals.d.ts` are both in the `files` array at the top level of your `tsconfig.json`, and that `compilerOptions.paths` contains the `@ns` alias. A minimal working config looks like:
 
 ```jsonc
 {
@@ -142,23 +147,30 @@ To enable type hints, make sure `NetscriptDefinitions.d.ts` is in the `files` ar
     "moduleResolution": "node",
     "allowJs": true,
     "checkJs": true,
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "react",
+    "paths": {
+      "@ns": ["NetscriptDefinitions.d.ts"]
+    }
   },
   "include": ["**/*"],
-  "files": ["NetscriptDefinitions.d.ts"]
+  "files": ["NetscriptDefinitions.d.ts", "NetscriptGlobals.d.ts"]
 }
 ```
 
-If you already have a `files` array, just append `"NetscriptDefinitions.d.ts"` to it:
+If you already have a `files` array, append both entries to it:
 
 ```jsonc
 "files": [
   "some/other/entry.ts",
-  "NetscriptDefinitions.d.ts"
+  "NetscriptDefinitions.d.ts",
+  "NetscriptGlobals.d.ts"
 ]
 ```
 
-If you don't have a `files` array at all, add one at the top level of the config object (alongside `compilerOptions` and `include`).
+If you don't have a `files` array at all, add one at the top level of the config object (alongside `compilerOptions` and `include`). Likewise, if `compilerOptions.paths` doesn't yet exist, add it with the `@ns` entry.
+
+`NetscriptGlobals.d.ts` is auto-generated from `NetscriptDefinitions.d.ts` whenever the extension downloads the definitions. If it's missing from your workspace, run **Bitburner: Download Type Definitions** (which regenerates it) or reload VS Code (the extension regenerates it on activation when the definitions file is present).
 
 After saving the file, reload the window (`Ctrl+Shift+P` → **Developer: Reload Window**) so the TypeScript server picks up the change.
 

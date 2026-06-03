@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.0.6
+- Enhanced .tsconfig to support @ns imports
+- Added global shim to make `NS` and other types available in-game also available in VS Code
+- Added global typing for React, so the type hints are available like they are in-game
+
 ## 0.0.3 - 0.0.5
 - Prompt to sync files into the game on connect, if there are files missing from game
 - Prompt to download files to workspace, if there are files in-game nto in the workspace

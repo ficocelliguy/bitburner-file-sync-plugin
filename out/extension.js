@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
+const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
 const WebSocketServer_1 = require("./server/WebSocketServer");
 const JsonRpcClient_1 = require("./server/JsonRpcClient");
@@ -91,7 +92,12 @@ function activate(context) {
     wsServer = new WebSocketServer_1.WebSocketServer();
     rpcClient = new JsonRpcClient_1.JsonRpcClient(wsServer);
     api = new BitburnerApi_1.BitburnerApi(rpcClient, config.targetServer);
-    syncEngine = new SyncEngine_1.SyncEngine(api, config, outputChannel);
+    // dist/types/ is populated by esbuild's copyBundledTypes step. Pass
+    // the absolute path so user tsconfigs can resolve `react` / `react-dom`
+    // imports against the bundled @types copies instead of forcing each
+    // user to install them.
+    const bundledTypesDir = path.join(context.extensionPath, 'dist', 'types');
+    syncEngine = new SyncEngine_1.SyncEngine(api, config, outputChannel, bundledTypesDir);
     fileWatcher = new FileWatcher_1.FileWatcher(syncEngine, config);
     statusBar = new StatusBar_1.StatusBar();
     wsServer.on('stateChanged', (state) => {
@@ -211,6 +217,12 @@ function activate(context) {
     // available. globalState (not workspaceState) so we only do this once
     // per VS Code install, not on every new workspace.
     void maybeOpenSettingsOnFirstInstall(context);
+    // Existing-user migration: if a previous version of the extension left
+    // a NetscriptDefinitions.d.ts in the workspace, regenerate the globals
+    // shim and patch tsconfig so `NS` becomes a global and `@ns` resolves —
+    // without waiting for the user to reconnect to the game. Fire-and-forget;
+    // failures are logged inside the call.
+    void syncEngine.ensureTypeDefinitionsSetup();
 }
 async function maybeOpenSettingsOnFirstInstall(context) {
     if (context.globalState.get(FIRST_INSTALL_KEY, false)) {

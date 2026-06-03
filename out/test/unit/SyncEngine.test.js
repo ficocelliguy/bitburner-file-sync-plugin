@@ -40,12 +40,12 @@ const SyncEngine_1 = require("../../sync/SyncEngine");
 const helpers_1 = require("./helpers");
 const BitburnerApi_1 = require("../../api/BitburnerApi");
 const { Uri, RelativePattern, _reset, _setWorkspaceFolders, _setConfig, _writeFile, _readFile, _state, _queueWarningResponse, } = vscodeMock;
-function buildEngine() {
+function buildEngine(opts = {}) {
     const rpc = new helpers_1.FakeRpcClient();
     const api = new BitburnerApi_1.BitburnerApi(rpc);
     const config = new Configuration_1.Configuration();
     const output = vscodeMock.window.createOutputChannel('test');
-    const engine = new SyncEngine_1.SyncEngine(api, config, output);
+    const engine = new SyncEngine_1.SyncEngine(api, config, output, opts.bundledTypesDir);
     return { engine, api, rpc, output };
 }
 suite('SyncEngine', () => {
@@ -339,6 +339,27 @@ suite('SyncEngine', () => {
             ];
             _writeFile('/workspace/main.js', 'main');
             _writeFile('/workspace/NetscriptDefinitions.d.ts', 'declare ...');
+            const { engine, rpc, output } = buildEngine();
+            await engine.syncAll();
+            const pushed = rpc.calls.filter(c => c.method === 'pushFile').map(c => c.params.filename);
+            assert_1.strict.deepEqual(pushed, ['/main.js']);
+            const summary = output.lines.find(l => /Sync complete/.test(l)) ?? '';
+            assert_1.strict.match(summary, /1 pushed, 0 failed, 1 excluded/);
+        });
+        test('NetscriptGlobals.d.ts is always excluded from explicit pushFile', async () => {
+            const { engine, rpc, output } = buildEngine();
+            _writeFile('/workspace/NetscriptGlobals.d.ts', 'declare global { type NS = never; }');
+            await engine.pushFile(Uri.file('/workspace/NetscriptGlobals.d.ts'));
+            assert_1.strict.equal(rpc.calls.filter(c => c.method === 'pushFile').length, 0);
+            assert_1.strict.ok(output.lines.some(l => /Excluded from sync.*NetscriptGlobals/.test(l)));
+        });
+        test('NetscriptGlobals.d.ts is excluded from syncAll', async () => {
+            _state.findFilesQueue = [
+                Uri.file('/workspace/main.js'),
+                Uri.file('/workspace/NetscriptGlobals.d.ts'),
+            ];
+            _writeFile('/workspace/main.js', 'main');
+            _writeFile('/workspace/NetscriptGlobals.d.ts', 'declare global { type NS = never; }');
             const { engine, rpc, output } = buildEngine();
             await engine.syncAll();
             const pushed = rpc.calls.filter(c => c.method === 'pushFile').map(c => c.params.filename);
@@ -873,67 +894,246 @@ suite('SyncEngine', () => {
             rpc.queueResponse('getDefinitionFile', 'declare ...');
             await assert_1.strict.rejects(engine.downloadDefinitions(), /No workspace folder open/);
         });
-        test('writes NetscriptDefinitions.d.ts at the workspace root', async () => {
+        // A minimal Netscript-shaped d.ts exercising the patcher: one already-
+        // exported declaration (must be left alone) and two upstream-style
+        // non-exported `@public` declarations (must be patched to `export`
+        // and globalized). Mirrors the real bitburner d.ts where types like
+        // `AutocompleteData` and `ReactNode` ship without `export`.
+        const SAMPLE_DEFS = [
+            'export interface NS {',
+            '  hack(host: string): Promise<number>;',
+            '}',
+            'type ScriptArg = string | number | boolean;', // patched -> exported
+            'interface AutocompleteData { servers: string[]; }', // patched -> exported
+        ].join('\n');
+        test('writes the patched NetscriptDefinitions.d.ts (top-level types exported) at the workspace root', async () => {
             const { engine, rpc } = buildEngine();
-            rpc.queueResponse('getDefinitionFile', 'declare const ns: NS;');
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
-            assert_1.strict.equal(_readFile('/workspace/NetscriptDefinitions.d.ts'), 'declare const ns: NS;');
+            const onDisk = _readFile('/workspace/NetscriptDefinitions.d.ts');
+            assert_1.strict.ok(onDisk);
+            // Already-exported declaration is untouched (not double-exported).
+            assert_1.strict.match(onDisk, /^export interface NS \{/m);
+            assert_1.strict.doesNotMatch(onDisk, /^export export /m);
+            // Previously-unexported declarations now have `export` prepended.
+            assert_1.strict.match(onDisk, /^export type ScriptArg = /m);
+            assert_1.strict.match(onDisk, /^export interface AutocompleteData \{/m);
         });
-        test('creates a tsconfig.json with the definitions entry if none exists', async () => {
+        test('generates NetscriptGlobals.d.ts with every top-level type (including patched ones) aliased into the global scope', async () => {
+            // Without a bundledTypesDir the shim falls back to typing React /
+            // ReactDOM as `any` so editor errors don't block scripts without
+            // a workspace-installed @types/react.
             const { engine, rpc } = buildEngine();
-            rpc.queueResponse('getDefinitionFile', 'x');
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
+            await engine.downloadDefinitions();
+            const shim = _readFile('/workspace/NetscriptGlobals.d.ts');
+            assert_1.strict.ok(shim, 'expected NetscriptGlobals.d.ts to be written');
+            // Pulls types from the sibling definitions file, not a bare module spec.
+            assert_1.strict.match(shim, /import type \* as _NS from "\.\/NetscriptDefinitions"/);
+            // Each top-level name gets a `declare global` re-export — including
+            // the ones that needed to be patched to export status.
+            assert_1.strict.match(shim, /declare global \{/);
+            assert_1.strict.match(shim, /type NS = _NS\.NS;/);
+            assert_1.strict.match(shim, /type ScriptArg = _NS\.ScriptArg;/);
+            assert_1.strict.match(shim, /type AutocompleteData = _NS\.AutocompleteData;/);
+            // React and ReactDOM are also globally available because the
+            // Bitburner runtime exposes them.
+            assert_1.strict.match(shim, /const React: any;/);
+            assert_1.strict.match(shim, /const ReactDOM: any;/);
+            // Module-marker so the file is treated as a module (so `declare global` works).
+            assert_1.strict.match(shim, /export \{\};/);
+        });
+        test('with bundledTypesDir set, the shim types React/ReactDOM via the bundled @types', async () => {
+            // Production path: the extension passes its own dist/types/
+            // directory, which holds copies of @types/react@^17 and
+            // @types/react-dom@^17. The shim then uses the real types.
+            const { engine, rpc } = buildEngine({ bundledTypesDir: '/ext/dist/types' });
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
+            await engine.downloadDefinitions();
+            const shim = _readFile('/workspace/NetscriptGlobals.d.ts');
+            assert_1.strict.ok(shim);
+            assert_1.strict.match(shim, /const React: typeof import\("react"\);/);
+            assert_1.strict.match(shim, /const ReactDOM: typeof import\("react-dom"\);/);
+            assert_1.strict.doesNotMatch(shim, /const React: any;/);
+        });
+        test('with bundledTypesDir set, tsconfig gets absolute react/react-dom path aliases', async () => {
+            const { engine, rpc } = buildEngine({ bundledTypesDir: '/ext/dist/types' });
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
+            await engine.downloadDefinitions();
+            const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths['@ns'], ['NetscriptDefinitions.d.ts']);
+            // Absolute paths into the extension dir.
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths['react'], ['/ext/dist/types/react']);
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths['react-dom'], ['/ext/dist/types/react-dom']);
+        });
+        test('with bundledTypesDir, stale react paths from a prior extension install get rewritten', async () => {
+            // Simulates the upgrade case: an older extension install wrote
+            // `react` pointing at /old/ext/.... The new install must
+            // overwrite that to its own current location, not leave the
+            // dangling pointer.
+            _writeFile('/workspace/tsconfig.json', JSON.stringify({
+                compilerOptions: {
+                    jsx: 'react',
+                    paths: {
+                        '@ns': ['NetscriptDefinitions.d.ts'],
+                        'react': ['/old/ext/dist/types/react'],
+                        'react-dom': ['/old/ext/dist/types/react-dom'],
+                    },
+                },
+                files: ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts'],
+            }));
+            const { engine, rpc } = buildEngine({ bundledTypesDir: '/new/ext/dist/types' });
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
+            await engine.downloadDefinitions();
+            const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths['react'], ['/new/ext/dist/types/react']);
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths['react-dom'], ['/new/ext/dist/types/react-dom']);
+            // @ns is add-if-missing, so it's untouched.
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths['@ns'], ['NetscriptDefinitions.d.ts']);
+        });
+        test('on Windows-style bundledTypesDir, paths are normalized to forward slashes', async () => {
+            const { engine, rpc } = buildEngine({ bundledTypesDir: 'C:\\Users\\u\\.vscode\\extensions\\bitburner-sync\\dist\\types' });
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
+            await engine.downloadDefinitions();
+            const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths['react'], ['C:/Users/u/.vscode/extensions/bitburner-sync/dist/types/react']);
+        });
+        test('the d.ts patcher is idempotent across re-downloads', async () => {
+            // Pre-patched content (already `export interface Foo`) should not
+            // grow a second `export ` on re-download.
+            const prePatched = 'export interface Foo { x: number; }\nexport type Bar = string;\n';
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getDefinitionFile', prePatched);
+            await engine.downloadDefinitions();
+            assert_1.strict.equal(_readFile('/workspace/NetscriptDefinitions.d.ts'), prePatched);
+        });
+        test('skips generating NetscriptGlobals.d.ts when the d.ts has no top-level declarations to patch or export', async () => {
+            const { engine, rpc, output } = buildEngine();
+            // No interface/type/enum/class declarations at all — the patcher
+            // produces an empty (no-export) file, so the extractor finds
+            // nothing and we skip writing the shim.
+            rpc.queueResponse('getDefinitionFile', '// just a comment\n');
+            await engine.downloadDefinitions();
+            assert_1.strict.equal(_readFile('/workspace/NetscriptGlobals.d.ts'), undefined);
+            assert_1.strict.ok(output.lines.some(l => /Skipped NetscriptGlobals\.d\.ts/.test(l)), `expected an output channel log about skipping, got: ${JSON.stringify(output.lines)}`);
+        });
+        test('creates a tsconfig.json with both files, the @ns path alias, and jsx config if none exists', async () => {
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             const raw = _readFile('/workspace/tsconfig.json');
             assert_1.strict.ok(raw, 'expected tsconfig.json to be written');
             const parsed = JSON.parse(raw);
-            assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts']);
+            assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
             assert_1.strict.equal(parsed.compilerOptions.target, 'ES2022');
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, { '@ns': ['NetscriptDefinitions.d.ts'] });
+            // Matches Bitburner's runtime (classic React.createElement factory).
+            assert_1.strict.equal(parsed.compilerOptions.jsx, 'react');
         });
-        test('appends to an existing tsconfig.json files array', async () => {
+        test('appends to an existing tsconfig.json files array and adds the @ns path alias and jsx mode', async () => {
             _writeFile('/workspace/tsconfig.json', JSON.stringify({
                 compilerOptions: { target: 'ES2020' },
                 files: ['existing.d.ts'],
             }));
             const { engine, rpc } = buildEngine();
-            rpc.queueResponse('getDefinitionFile', 'x');
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
-            assert_1.strict.deepEqual(parsed.files, ['existing.d.ts', 'NetscriptDefinitions.d.ts']);
+            assert_1.strict.deepEqual(parsed.files, ['existing.d.ts', 'NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, { '@ns': ['NetscriptDefinitions.d.ts'] });
+            assert_1.strict.equal(parsed.compilerOptions.jsx, 'react');
             // Preserves untouched fields
             assert_1.strict.equal(parsed.compilerOptions.target, 'ES2020');
         });
-        test('leaves tsconfig.json alone if the entry is already present', async () => {
+        test('preserves an existing user-set jsx mode (does not overwrite)', async () => {
+            // A user already chose `react-jsx` (the automatic runtime). We
+            // must not silently downgrade them to classic just because we'd
+            // pick `react` for a fresh template.
+            _writeFile('/workspace/tsconfig.json', JSON.stringify({
+                compilerOptions: { jsx: 'react-jsx', paths: { '@ns': ['NetscriptDefinitions.d.ts'] } },
+                files: ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts'],
+            }));
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
+            await engine.downloadDefinitions();
+            const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
+            assert_1.strict.equal(parsed.compilerOptions.jsx, 'react-jsx');
+        });
+        test('preserves existing user paths aliases when adding @ns', async () => {
+            _writeFile('/workspace/tsconfig.json', JSON.stringify({
+                compilerOptions: {
+                    target: 'ES2020',
+                    baseUrl: '.',
+                    jsx: 'react',
+                    paths: { '~/*': ['src/*'] },
+                },
+                files: ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts'],
+            }));
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
+            await engine.downloadDefinitions();
+            const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, {
+                '~/*': ['src/*'],
+                '@ns': ['NetscriptDefinitions.d.ts'],
+            });
+            // User-set baseUrl is untouched.
+            assert_1.strict.equal(parsed.compilerOptions.baseUrl, '.');
+        });
+        test('leaves tsconfig.json alone if files, the @ns alias, and jsx are all already present', async () => {
             const original = JSON.stringify({
-                compilerOptions: { target: 'ES2020' },
-                files: ['NetscriptDefinitions.d.ts'],
+                compilerOptions: {
+                    target: 'ES2020',
+                    jsx: 'react',
+                    paths: { '@ns': ['NetscriptDefinitions.d.ts'] },
+                },
+                files: ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts'],
             });
             _writeFile('/workspace/tsconfig.json', original);
             const { engine, rpc } = buildEngine();
-            rpc.queueResponse('getDefinitionFile', 'x');
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             assert_1.strict.equal(_readFile('/workspace/tsconfig.json'), original);
+        });
+        test('migrates a pre-globals tsconfig by adding NetscriptGlobals.d.ts, the @ns alias, and jsx mode', async () => {
+            // Simulates a workspace set up by an older version of the
+            // extension: files[] has the definitions but no globals shim,
+            // no paths alias, and no jsx config.
+            _writeFile('/workspace/tsconfig.json', JSON.stringify({
+                compilerOptions: { target: 'ES2020' },
+                files: ['NetscriptDefinitions.d.ts'],
+            }));
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
+            await engine.downloadDefinitions();
+            const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
+            assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, { '@ns': ['NetscriptDefinitions.d.ts'] });
+            assert_1.strict.equal(parsed.compilerOptions.jsx, 'react');
         });
         test('creates a files array if the existing tsconfig has none', async () => {
             _writeFile('/workspace/tsconfig.json', JSON.stringify({
                 compilerOptions: { target: 'ES2020' },
             }));
             const { engine, rpc } = buildEngine();
-            rpc.queueResponse('getDefinitionFile', 'x');
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
-            assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts']);
+            assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, { '@ns': ['NetscriptDefinitions.d.ts'] });
+            assert_1.strict.equal(parsed.compilerOptions.jsx, 'react');
         });
         test('leaves an unparseable tsconfig untouched and warns the user', async () => {
             const original = '{ this is not json';
             _writeFile('/workspace/tsconfig.json', original);
             const { engine, rpc } = buildEngine();
-            rpc.queueResponse('getDefinitionFile', 'x');
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             assert_1.strict.equal(_readFile('/workspace/tsconfig.json'), original);
             const warnings = _state.notifications.filter(n => n.kind === 'warning');
             assert_1.strict.ok(warnings.some(w => /could not be parsed/i.test(w.message)), `expected a warning about an unparseable tsconfig, got: ${JSON.stringify(warnings)}`);
         });
-        test('leaves a JSONC tsconfig untouched and warns when the entry is missing', async () => {
+        test('leaves a JSONC tsconfig untouched and warns when entries are missing', async () => {
             const jsonc = [
                 '{',
                 '  // comment that strict JSON.parse rejects',
@@ -943,26 +1143,47 @@ suite('SyncEngine', () => {
             ].join('\n');
             _writeFile('/workspace/tsconfig.json', jsonc);
             const { engine, rpc } = buildEngine();
-            rpc.queueResponse('getDefinitionFile', 'x');
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             assert_1.strict.equal(_readFile('/workspace/tsconfig.json'), jsonc);
             const warnings = _state.notifications.filter(n => n.kind === 'warning');
             assert_1.strict.ok(warnings.some(w => /JSONC|comments or trailing commas/i.test(w.message)), `expected a warning about JSONC, got: ${JSON.stringify(warnings)}`);
         });
-        test('does nothing and does not warn when a JSONC tsconfig already has the entry', async () => {
+        test('does nothing and does not warn when a JSONC tsconfig already has all wanted entries', async () => {
             const jsonc = [
                 '{',
                 '  // already wired up',
-                '  "files": ["NetscriptDefinitions.d.ts"],',
+                '  "compilerOptions": {',
+                '    "jsx": "react",',
+                '    "paths": { "@ns": ["NetscriptDefinitions.d.ts"] },',
+                '  },',
+                '  "files": ["NetscriptDefinitions.d.ts", "NetscriptGlobals.d.ts"],',
                 '}',
             ].join('\n');
             _writeFile('/workspace/tsconfig.json', jsonc);
             const { engine, rpc } = buildEngine();
-            rpc.queueResponse('getDefinitionFile', 'x');
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             assert_1.strict.equal(_readFile('/workspace/tsconfig.json'), jsonc);
             const warnings = _state.notifications.filter(n => n.kind === 'warning');
             assert_1.strict.equal(warnings.length, 0, `expected no warnings, got: ${JSON.stringify(warnings)}`);
+        });
+        test('warns on a JSONC tsconfig that has files but is missing the @ns path alias', async () => {
+            // The pre-globals shape: files[] is right but paths is absent.
+            // We can't rewrite a JSONC file safely, so the user needs a warning.
+            const jsonc = [
+                '{',
+                '  // older config — no paths alias yet',
+                '  "files": ["NetscriptDefinitions.d.ts", "NetscriptGlobals.d.ts"],',
+                '}',
+            ].join('\n');
+            _writeFile('/workspace/tsconfig.json', jsonc);
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
+            await engine.downloadDefinitions();
+            assert_1.strict.equal(_readFile('/workspace/tsconfig.json'), jsonc);
+            const warnings = _state.notifications.filter(n => n.kind === 'warning');
+            assert_1.strict.ok(warnings.some(w => /JSONC|comments or trailing commas/i.test(w.message)), `expected a warning, got: ${JSON.stringify(warnings)}`);
         });
         test('JSONC detection preserves string contents that look like trailing commas (string-aware scan)', async () => {
             // A previous regex-based trailing-comma sweep would have stripped
@@ -975,16 +1196,56 @@ suite('SyncEngine', () => {
                 '{',
                 '  // user comment forces the JSONC path',
                 '  "banner": "{ foo ,} bar",',
-                '  "files": ["NetscriptDefinitions.d.ts"],',
+                '  "compilerOptions": {',
+                '    "jsx": "react",',
+                '    "paths": { "@ns": ["NetscriptDefinitions.d.ts"] },',
+                '  },',
+                '  "files": ["NetscriptDefinitions.d.ts", "NetscriptGlobals.d.ts"],',
                 '}',
             ].join('\n');
             _writeFile('/workspace/tsconfig.json', jsonc);
             const { engine, rpc } = buildEngine();
-            rpc.queueResponse('getDefinitionFile', 'x');
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             assert_1.strict.equal(_readFile('/workspace/tsconfig.json'), jsonc);
             const warnings = _state.notifications.filter(n => n.kind === 'warning');
             assert_1.strict.equal(warnings.length, 0, `expected no warnings, got: ${JSON.stringify(warnings)}`);
+        });
+    });
+    suite('ensureTypeDefinitionsSetup', () => {
+        const SAMPLE_DEFS = 'export interface NS { x: number; }\nexport type Y = string;\n';
+        test('is a no-op when no NetscriptDefinitions.d.ts exists in the workspace', async () => {
+            const { engine } = buildEngine();
+            await engine.ensureTypeDefinitionsSetup();
+            assert_1.strict.equal(_readFile('/workspace/NetscriptGlobals.d.ts'), undefined);
+            assert_1.strict.equal(_readFile('/workspace/tsconfig.json'), undefined);
+        });
+        test('is a no-op when no workspace folder is open', async () => {
+            _state.workspaceFolders = undefined;
+            const { engine } = buildEngine();
+            // Must not throw — activation must never be blocked by this.
+            await engine.ensureTypeDefinitionsSetup();
+        });
+        test('generates NetscriptGlobals.d.ts and patches tsconfig from an existing d.ts (existing-user migration)', async () => {
+            // Simulate an upgrade: an older version of the extension already
+            // put NetscriptDefinitions.d.ts in the workspace and wrote a
+            // pre-globals tsconfig. The user updates, reloads VS Code, and
+            // we set up the globals shim + paths alias on activation.
+            _writeFile('/workspace/NetscriptDefinitions.d.ts', SAMPLE_DEFS);
+            _writeFile('/workspace/tsconfig.json', JSON.stringify({
+                compilerOptions: { target: 'ES2020' },
+                files: ['NetscriptDefinitions.d.ts'],
+            }));
+            const { engine, rpc } = buildEngine();
+            await engine.ensureTypeDefinitionsSetup();
+            // No server round-trip — migration reads the local d.ts.
+            assert_1.strict.equal(rpc.calls.length, 0);
+            const shim = _readFile('/workspace/NetscriptGlobals.d.ts');
+            assert_1.strict.ok(shim, 'expected NetscriptGlobals.d.ts to be generated');
+            assert_1.strict.match(shim, /type NS = _NS\.NS;/);
+            const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
+            assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, { '@ns': ['NetscriptDefinitions.d.ts'] });
         });
     });
 });
