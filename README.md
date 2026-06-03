@@ -13,20 +13,21 @@ A VS Code extension that syncs your local script files to [Bitburner](https://gi
 ## Setup
 
 1 - Install the extension in VS Code. On first install the extension auto-opens its settings page so you can review per-project options.
+
 2 - Open the Command Palette (`Ctrl+Shift+P`) and run **Bitburner: Start Sync Server**.
+
 3 - In Bitburner, go to **Options > Remote API** and enter the port (default `12525`), then click `Connect`. The status bar will show "Connected" once linked.
+
 4 - The first time you connect to Bitburner from a workspace, the extension offers to download in-game scripts you don't have locally — or, if the game has nothing new, offers to push up any local scripts the game is missing. You can trigger either operation manually at any time via **Bitburner: Download Files from Server** or **Bitburner: Sync All Files**.
+
 5 - All your files will be synced into Bitburner on save.
 
-The extension works on Windows, macOS, and Linux — all paths are normalized internally and the sync server binds to loopback (`127.0.0.1`) on every platform.
 
 If you have any questions, ask on the [official Discord](https://discord.gg/TFc3hKD) or on the [issues page for this plugin](https://github.com/ficocelliguy/bitburner-file-sync-plugin/issues).
 
-### Per-project configuration
+## Downloading scripts from Bitburner
 
-All settings are scoped per-resource, so each project gets its own configuration. To configure a single project: open `.vscode/settings.json` in that project and add `bitburnerSync.*` entries. They override your user-level settings only inside that workspace.
-
-Files in your workspace are mapped by their workspace-relative path. By default, that path is preserved verbatim — `src/hack.js` becomes `/src/hack.js` on the target server. If you'd rather treat one of your workspace folders as the Bitburner root (so `src/hack.js` becomes `/hack.js` instead), set `bitburnerSync.syncDirectory` to that folder name. See the settings table below for more details.
+`Bitburner: Download Files from Server` pulls every script whose extension is in `bitburnerSync.fileExtensions`. Files unique to the server (not present locally) are downloaded automatically. If any of the server's files would *overwrite* an existing local file, the extension prompts before clobbering — you can confirm or decline; declining keeps your local conflicts intact but the brand-new files are still downloaded.
 
 ## Commands
 
@@ -66,15 +67,10 @@ These settings live under `bitburnerSync` in VS Code. To edit them:
 
 Individual workspace settings are stored in `.vscode/settings.json` inside your project and override your global user settings — useful if you want a different `syncDirectory` per project.
 
-## Downloading from Bitburner
-
-`Bitburner: Download Files from Server` pulls every script whose extension is in `bitburnerSync.fileExtensions`. Files unique to the server (not present locally) are downloaded automatically. If any of the server's files would *overwrite* an existing local file, the extension prompts before clobbering — you can confirm or decline; declining keeps your local conflicts intact but the brand-new files are still downloaded.
-
 ## Excluding files
 
-By default, the extension syncs every workspace file whose extension is in `bitburnerSync.fileExtensions` and that lives under `bitburnerSync.syncDirectory`. The same `fileExtensions` filter applies in reverse: `Bitburner: Download Files from Server` only pulls down files whose extension is in the list (so Bitburner-specific files like `*.cct` contracts or `*.lit` literature are left on the server unless you opt in).
+By default, the extension syncs every workspace file whose extension is in `bitburnerSync.fileExtensions` and that lives under `bitburnerSync.syncDirectory`. The same `fileExtensions` filter applies in reverse: `Bitburner: Download Files from Server` only pulls down files whose extension is in the list.
 
-On top of the extension filter, two layers of path exclusions apply:
 ```md
 - **`bitburnerSync.exclude`.** Your own list of additional workspace-relative glob patterns.
 - **Baseline:** These paths are *always* excluded:
@@ -118,7 +114,7 @@ Forward slashes (`/`) are the path separator. Backslashes you paste in (e.g. `no
 }
 ```
 
-Common gotcha: `*.js` only matches `.js` files at the workspace root. To exclude `.js` files at any depth, use `**/*.js`.
+Note: `*.js` only matches `.js` files at the workspace root. To exclude `.js` files at any depth, use `**/*.js`.
 
 ## Type Definitions
 

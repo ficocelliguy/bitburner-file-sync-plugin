@@ -1,8 +1,9 @@
 # Change Log
 
-## 0.0.3
+## 0.0.3 - 0.0.5
 - Prompt to sync files into the game on connect, if there are files missing from game
 - Prompt to download files to workspace, if there are files in-game nto in the workspace
+- Improve documentation, support info, and readme
 - Update icon
 
 ## 0.0.2
