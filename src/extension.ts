@@ -16,6 +16,11 @@ let fileWatcher: FileWatcher;
 let statusBar: StatusBar;
 let outputChannel: vscode.OutputChannel;
 
+// Persistence keys. Names live here so the two callers (the read in
+// activate() and the write after running once) can't drift apart.
+const FIRST_INSTALL_KEY = 'bitburnerSync.hasOpenedConfigOnFirstInstall';
+const FIRST_CONNECT_KEY = 'bitburnerSync.hasConnectedBefore';
+
 async function startServer(): Promise<void> {
     // Allow retry from the error state — that's the whole point of clicking
     // the status bar after a failed bind. wsServer.start() internally stops
@@ -79,6 +84,10 @@ export function activate(context: vscode.ExtensionContext): void {
                 outputChannel.appendLine(`Auto-download definitions failed: ${err}`);
             }
         }
+        // First-connect-per-workspace prompt: if the game has scripts the
+        // user doesn't have locally, offer to pull them down. workspaceState
+        // (not globalState) so each project gets its own offer.
+        await maybePromptFirstConnectDownload(context);
     });
 
     wsServer.on('disconnected', () => {
@@ -183,6 +192,52 @@ export function activate(context: vscode.ExtensionContext): void {
     // Auto-start if configured
     if (config.autoStart) {
         startServer();
+    }
+
+    // First-install: open the settings UI so the user can see what's
+    // available. globalState (not workspaceState) so we only do this once
+    // per VS Code install, not on every new workspace.
+    void maybeOpenSettingsOnFirstInstall(context);
+}
+
+async function maybeOpenSettingsOnFirstInstall(context: vscode.ExtensionContext): Promise<void> {
+    if (context.globalState.get<boolean>(FIRST_INSTALL_KEY, false)) {
+        return;
+    }
+    // Mark first so a failed openSettings (e.g. command palette unavailable
+    // mid-startup) doesn't re-pop on every reload. The user can always open
+    // settings manually if they missed the auto-open.
+    await context.globalState.update(FIRST_INSTALL_KEY, true);
+    try {
+        await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:bitburner-file-sync-plugin');
+    } catch (err) {
+        outputChannel.appendLine(`Could not open settings UI: ${err}`);
+    }
+}
+
+async function maybePromptFirstConnectDownload(context: vscode.ExtensionContext): Promise<void> {
+    if (context.workspaceState.get<boolean>(FIRST_CONNECT_KEY, false)) {
+        return;
+    }
+    // Set the flag before we await any RPCs — if the user disconnects/reconnects
+    // mid-listing, we don't want to fire the prompt twice for the same
+    // first-connect intent.
+    await context.workspaceState.update(FIRST_CONNECT_KEY, true);
+    try {
+        const newCount = await syncEngine.countNewRemoteFiles();
+        if (newCount <= 0) {
+            return;
+        }
+        const noun = newCount === 1 ? 'script' : 'scripts';
+        const choice = await vscode.window.showInformationMessage(
+            `Bitburner has ${newCount} ${noun} not in this workspace. Download them now?`,
+            'Download', 'Not now'
+        );
+        if (choice === 'Download') {
+            await syncEngine.downloadAll();
+        }
+    } catch (err) {
+        outputChannel.appendLine(`First-connect download prompt failed: ${err}`);
     }
 }
 

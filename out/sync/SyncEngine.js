@@ -218,61 +218,33 @@ class SyncEngine {
             vscode.window.showWarningMessage('bitburnerSync.fileExtensions is set to []. Nothing will be downloaded. Remove the setting to fall back to the defaults.');
             return;
         }
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
-            throw new Error('No workspace folder open');
-        }
-        const rootUri = workspaceFolders[0].uri;
-        const syncDir = this.config.syncDirectory;
-        const destBaseUri = syncDir ? vscode.Uri.joinPath(rootUri, syncDir) : rootUri;
-        const fileNames = await this.api.getFileNames(this.config.targetServer);
-        if (fileNames.length === 0) {
-            vscode.window.showWarningMessage('No files found on Bitburner server.');
+        const planResult = await this.buildDownloadPlan();
+        if (planResult === null) {
             return;
         }
-        if (fileNames.length > MAX_DOWNLOAD_FILE_COUNT) {
-            const msg = `Refusing to download: server returned ${fileNames.length} filenames (limit is ${MAX_DOWNLOAD_FILE_COUNT}). This usually indicates a corrupt save or a buggy server. Narrow bitburnerSync.fileExtensions or contact the server admin.`;
-            this.log(msg);
-            vscode.window.showErrorMessage(msg);
-            return;
-        }
-        // Pre-flight: validate every server-supplied filename, drop the ones
-        // that would let the server write outside the destination directory
-        // or smuggle in confusing/invalid path syntax, narrow the set to the
-        // same extensions we sync upward, then figure out which of the
-        // remaining downloads would clobber an existing local file.
-        const allowedExts = this.config.fileExtensions;
-        const plan = [];
-        const conflicts = [];
-        let skipped = 0;
-        for (const filename of fileNames) {
-            try {
-                (0, PathMapper_1.validateRemotePath)(filename);
-            }
-            catch (err) {
-                skipped++;
-                this.log(`Skipped (invalid name from server): ${JSON.stringify(filename)} — ${err instanceof Error ? err.message : err}`);
-                continue;
-            }
-            if (!matchesAllowedExtension(filename, allowedExts)) {
-                skipped++;
-                this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${filename}`);
-                continue;
-            }
-            const relativePath = filename.startsWith('/') ? filename.slice(1) : filename;
-            const destUri = vscode.Uri.joinPath(destBaseUri, relativePath);
-            plan.push({ remote: filename, destUri });
-            if (await this.fileExists(destUri)) {
-                conflicts.push(filename);
+        const { entries, skipped } = planResult;
+        // Always pull new unique files; only the would-overwrite set gets a
+        // confirmation prompt. If the user declines, the new files are still
+        // downloaded — the prompt is about clobbering local work, not about
+        // bailing on the whole operation. The download iterates `entries`
+        // in the order the server returned them, so a partial download
+        // (existing-skipped) doesn't reshuffle the user's project.
+        let includeExisting = true;
+        const existingRemotes = entries.filter(e => e.existing).map(e => e.remote);
+        if (existingRemotes.length > 0) {
+            includeExisting = await this.confirmOverwrite(existingRemotes);
+            if (!includeExisting) {
+                this.log(`Overwrite declined: ${existingRemotes.length} existing local file${existingRemotes.length === 1 ? '' : 's'} kept; new files will still be downloaded`);
             }
         }
-        if (conflicts.length > 0 && !(await this.confirmOverwrite(conflicts))) {
-            this.log(`Download cancelled by user (${conflicts.length} local file${conflicts.length === 1 ? '' : 's'} would have been overwritten)`);
+        const toDownload = entries.filter(e => includeExisting || !e.existing);
+        if (toDownload.length === 0 && skipped === 0) {
+            vscode.window.showWarningMessage('Nothing to download.');
             return;
         }
         let downloaded = 0;
         let failed = 0;
-        for (const { remote, destUri } of plan) {
+        for (const { remote, destUri } of toDownload) {
             try {
                 const content = await this.api.getFile(remote, this.config.targetServer);
                 // Mirror the upload-side MAX_FILE_SIZE_BYTES cap. The string
@@ -299,6 +271,85 @@ class SyncEngine {
         if (this.config.showNotifications) {
             vscode.window.showInformationMessage(msg);
         }
+    }
+    // Returns the count of remote files that don't yet exist locally, after
+    // the same path/extension filtering downloadAll() applies. Used by the
+    // first-connect prompt in extension.ts to decide whether to ask the user
+    // about pulling files down.
+    async countNewRemoteFiles() {
+        if (this.config.fileExtensions.length === 0) {
+            return 0;
+        }
+        const planResult = await this.buildDownloadPlan({ silent: true });
+        if (planResult === null) {
+            return 0;
+        }
+        return planResult.entries.filter(e => !e.existing).length;
+    }
+    // Listing + per-name validation + new/existing partition. Shared by
+    // downloadAll() and countNewRemoteFiles() so the two stay in sync on
+    // what counts as a downloadable file. Returns null when the caller
+    // should abort entirely (no workspace, empty listing, server returned
+    // an unreasonable count). When `silent` is true the caller is asking
+    // a question, not running the download — suppress user-facing warnings
+    // and per-skip log spam.
+    async buildDownloadPlan(opts = {}) {
+        const silent = !!opts.silent;
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            if (silent) {
+                return null;
+            }
+            throw new Error('No workspace folder open');
+        }
+        const rootUri = workspaceFolders[0].uri;
+        const syncDir = this.config.syncDirectory;
+        const destBaseUri = syncDir ? vscode.Uri.joinPath(rootUri, syncDir) : rootUri;
+        const fileNames = await this.api.getFileNames(this.config.targetServer);
+        if (fileNames.length === 0) {
+            if (!silent) {
+                vscode.window.showWarningMessage('No files found on Bitburner server.');
+            }
+            return null;
+        }
+        if (fileNames.length > MAX_DOWNLOAD_FILE_COUNT) {
+            if (!silent) {
+                const msg = `Refusing to download: server returned ${fileNames.length} filenames (limit is ${MAX_DOWNLOAD_FILE_COUNT}). This usually indicates a corrupt save or a buggy server. Narrow bitburnerSync.fileExtensions or contact the server admin.`;
+                this.log(msg);
+                vscode.window.showErrorMessage(msg);
+            }
+            return null;
+        }
+        const allowedExts = this.config.fileExtensions;
+        const entries = [];
+        let skipped = 0;
+        for (const filename of fileNames) {
+            try {
+                (0, PathMapper_1.validateRemotePath)(filename);
+            }
+            catch (err) {
+                skipped++;
+                if (!silent) {
+                    this.log(`Skipped (invalid name from server): ${JSON.stringify(filename)} — ${err instanceof Error ? err.message : err}`);
+                }
+                continue;
+            }
+            if (!matchesAllowedExtension(filename, allowedExts)) {
+                skipped++;
+                if (!silent) {
+                    this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${filename}`);
+                }
+                continue;
+            }
+            const relativePath = filename.startsWith('/') ? filename.slice(1) : filename;
+            const destUri = vscode.Uri.joinPath(destBaseUri, relativePath);
+            entries.push({
+                remote: filename,
+                destUri,
+                existing: await this.fileExists(destUri),
+            });
+        }
+        return { entries, skipped };
     }
     async fileExists(uri) {
         try {
@@ -351,7 +402,7 @@ class SyncEngine {
         const noun = count === 1 ? 'file' : 'files';
         const choice = await vscode.window.showWarningMessage(`Overwrite ${count} local ${noun}?`, {
             modal: true,
-            detail: `Downloading from Bitburner will replace the following ${noun}:\n\n${list}${more}`,
+            detail: `Downloading from Bitburner will replace the following ${noun}:\n\n${list}${more}\n\nNew files (not yet present locally) will be downloaded either way.`,
         }, 'Overwrite');
         return choice === 'Overwrite';
     }

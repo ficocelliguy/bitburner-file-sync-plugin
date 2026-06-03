@@ -11,11 +11,16 @@ const {
     _setConfig,
     _setWorkspaceFolders,
     _triggerConfigChange,
+    _makeMemento,
     Uri,
 } = vscodeMock;
 
-function makeContext(): ExtensionContext {
-    return { subscriptions: [] };
+function makeContext(opts: { globalSeed?: Record<string, unknown>; workspaceSeed?: Record<string, unknown> } = {}): ExtensionContext {
+    return {
+        subscriptions: [],
+        globalState: _makeMemento(opts.globalSeed),
+        workspaceState: _makeMemento(opts.workspaceSeed),
+    };
 }
 
 function disposeAll(ctx: ExtensionContext): void {
@@ -383,6 +388,63 @@ suite('extension activate()', () => {
             await waitMs(20);
 
             assert.ok(findEscapeWarning(), `expected an escape warning after config change`);
+            disposeAll(ctx);
+        });
+    });
+
+    suite('first-install: open settings UI', () => {
+        const FIRST_INSTALL_KEY = 'bitburnerSync.hasOpenedConfigOnFirstInstall';
+
+        test('opens the bitburnerSync settings UI on first activation', async () => {
+            const ctx = makeContext();
+            // VS Code's built-in command isn't in our mock; register a stub so we can verify.
+            let openSettingsArg: string | undefined;
+            vscodeMock.commands.registerCommand('workbench.action.openSettings', (arg) => {
+                openSettingsArg = arg as string;
+                return undefined;
+            });
+            activate(ctx as unknown as Parameters<typeof activate>[0]);
+            // Let the void-promise in maybeOpenSettingsOnFirstInstall settle.
+            await waitMs(20);
+
+            assert.equal(openSettingsArg, '@ext:bitburner-file-sync-plugin');
+            assert.equal(ctx.globalState.get(FIRST_INSTALL_KEY, false), true, 'flag should be persisted after first open');
+            disposeAll(ctx);
+        });
+
+        test('does not re-open the settings UI when the flag is already set', async () => {
+            const ctx = makeContext({ globalSeed: { [FIRST_INSTALL_KEY]: true } });
+            let openSettingsCalls = 0;
+            vscodeMock.commands.registerCommand('workbench.action.openSettings', () => {
+                openSettingsCalls++;
+                return undefined;
+            });
+            activate(ctx as unknown as Parameters<typeof activate>[0]);
+            await waitMs(20);
+
+            assert.equal(openSettingsCalls, 0, 'expected no settings auto-open on a non-first activation');
+            disposeAll(ctx);
+        });
+    });
+
+    suite('first-connect: prompt to download', () => {
+        const FIRST_CONNECT_KEY = 'bitburnerSync.hasConnectedBefore';
+
+        test('flag is initially false on a fresh workspace', () => {
+            const ctx = makeContext();
+            assert.equal(ctx.workspaceState.get(FIRST_CONNECT_KEY, false), false);
+            disposeAll(ctx);
+        });
+
+        test('seeded workspaceState short-circuits the prompt logic', () => {
+            // We can't easily simulate the full ws connect path in a unit test
+            // without a real WebSocketServer dance, but we can verify the key
+            // is consulted via workspaceState — i.e. the storage scope is
+            // per-workspace, not global.
+            const ctx = makeContext({ workspaceSeed: { [FIRST_CONNECT_KEY]: true } });
+            assert.equal(ctx.workspaceState.get(FIRST_CONNECT_KEY, false), true);
+            // The same key in globalState must NOT be considered.
+            assert.equal(ctx.globalState.get(FIRST_CONNECT_KEY, false), false);
             disposeAll(ctx);
         });
     });

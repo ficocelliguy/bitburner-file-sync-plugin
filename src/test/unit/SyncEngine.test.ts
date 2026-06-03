@@ -630,18 +630,18 @@ suite('SyncEngine', () => {
             assert.equal(_readFile('/workspace/fresh.js'), 'content');
         });
 
-        test('prompts before overwriting, listing each conflicting file, and aborts when the user declines', async () => {
+        test('prompts before overwriting and, when declined, still downloads brand-new files but leaves conflicts alone', async () => {
             _writeFile('/workspace/a.js', 'local a');
             _writeFile('/workspace/lib/b.js', 'local b');
             _queueWarningResponse(undefined); // simulate user cancelling the modal
             const { engine, rpc } = buildEngine();
             rpc.queueResponse('getFileNames', ['/a.js', '/lib/b.js', '/c.js']);
-            // queue getFile responses; if downloadAll honors the cancel they must NOT be consumed
-            rpc.queueResponse('getFile', 'remote a', 'remote b', 'remote c');
+            // /c.js is new — it will still be pulled. The two conflicts must NOT be fetched.
+            rpc.queueResponse('getFile', 'remote c');
 
             await engine.downloadAll();
 
-            // Modal prompt was shown, with the two conflicts and the 'Overwrite' button
+            // Modal prompt was shown, listing only the conflicts (not /c.js)
             const warnings = _state.notifications.filter(n => n.kind === 'warning');
             assert.equal(warnings.length, 1, 'expected exactly one warning prompt');
             const prompt = warnings[0];
@@ -652,14 +652,15 @@ suite('SyncEngine', () => {
             assert.ok(prompt.detail && !prompt.detail.includes('/c.js'), `non-conflict /c.js should not appear in detail: ${prompt.detail}`);
             assert.deepEqual(prompt.items, ['Overwrite']);
 
-            // Local files unchanged, and no getFile RPCs were made
+            // Conflicts kept; the new file came down anyway; only one getFile RPC fired
             assert.equal(_readFile('/workspace/a.js'), 'local a');
             assert.equal(_readFile('/workspace/lib/b.js'), 'local b');
-            assert.equal(_readFile('/workspace/c.js'), undefined);
-            assert.equal(rpc.calls.filter(c => c.method === 'getFile').length, 0);
+            assert.equal(_readFile('/workspace/c.js'), 'remote c');
+            const fetched = rpc.calls.filter(c => c.method === 'getFile').map(c => (c.params as { filename: string }).filename);
+            assert.deepEqual(fetched, ['/c.js']);
         });
 
-        test('proceeds with the full download when the user confirms the overwrite', async () => {
+        test('proceeds with the full download when the user confirms the overwrite, preserving server-listing order', async () => {
             _writeFile('/workspace/a.js', 'local a');
             _queueWarningResponse('Overwrite');
             const { engine, rpc } = buildEngine();
@@ -816,6 +817,53 @@ suite('SyncEngine', () => {
             const errs = _state.notifications.filter(n => n.kind === 'error');
             assert.equal(errs.length, 0, `expected no error at the limit boundary, got: ${JSON.stringify(errs)}`);
             assert.equal(rpc.calls.filter(c => c.method === 'getFile').length, 5000);
+        });
+
+        test('downloads new files even when there are no conflicts and never prompts', async () => {
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFileNames', ['/x.js', '/y.js']);
+            rpc.queueResponse('getFile', 'X', 'Y');
+            await engine.downloadAll();
+            assert.equal(_readFile('/workspace/x.js'), 'X');
+            assert.equal(_readFile('/workspace/y.js'), 'Y');
+            const warnings = _state.notifications.filter(n => n.kind === 'warning');
+            assert.equal(warnings.length, 0, 'no prompt when there are no conflicts');
+        });
+    });
+
+    suite('countNewRemoteFiles', () => {
+        test('counts only filenames that are not already present locally', async () => {
+            _writeFile('/workspace/existing.js', 'local');
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFileNames', ['/existing.js', '/new1.js', '/new2.js']);
+            const n = await engine.countNewRemoteFiles();
+            assert.equal(n, 2);
+        });
+
+        test('returns 0 when every remote file already exists locally', async () => {
+            _writeFile('/workspace/a.js', 'local');
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFileNames', ['/a.js']);
+            assert.equal(await engine.countNewRemoteFiles(), 0);
+        });
+
+        test('returns 0 when fileExtensions is explicitly []', async () => {
+            _setConfig('bitburnerSync', 'fileExtensions', []);
+            const { engine } = buildEngine();
+            // No RPC needed: short-circuited before the listing call.
+            assert.equal(await engine.countNewRemoteFiles(), 0);
+        });
+
+        test('returns 0 when no workspace folder is open (silent: does not throw)', async () => {
+            _state.workspaceFolders = undefined;
+            const { engine } = buildEngine();
+            assert.equal(await engine.countNewRemoteFiles(), 0);
+        });
+
+        test('ignores skipped (invalid / wrong-extension) entries in the count', async () => {
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFileNames', ['/good.js', '/bad.cct', '/../escape.js']);
+            assert.equal(await engine.countNewRemoteFiles(), 1);
         });
     });
 

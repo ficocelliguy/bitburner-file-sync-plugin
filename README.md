@@ -12,11 +12,17 @@ A VS Code extension that syncs your local script files to [Bitburner](https://gi
 
 ## Setup
 
-1. Install the extension in VS Code.
+1. Install the extension in VS Code. On first install the extension auto-opens its settings page so you can review per-project options.
 2. Open the Command Palette (`Ctrl+Shift+P`) and run **Bitburner: Start Sync Server**.
 3. In Bitburner, go to **Options > Remote API** and enter the port (default `12525`), then click `Connect`. The status bar will show "Connected" once linked.
-4. If this is the first time using the extension, pull your files from the game into the current project by using **Bitburner: Download Files from Server** from the Command Palette
-5. All your files will be synced into the Bitburner on save.
+4. The first time you connect to Bitburner from a workspace, if the game has scripts that aren't present locally, the extension offers to pull them down for you. You can also trigger this manually at any time via **Bitburner: Download Files from Server**.
+5. All your files will be synced into Bitburner on save.
+
+The extension works on Windows, macOS, and Linux — all paths are normalized internally and the sync server binds to loopback (`127.0.0.1`) on every platform.
+
+### Per-project configuration
+
+All settings are scoped per-resource, so each project gets its own configuration. To configure a single project: open `.vscode/settings.json` in that project and add `bitburnerSync.*` entries. They override your user-level settings only inside that workspace.
 
 Files in your workspace are mapped by their workspace-relative path. By default, that path is preserved verbatim — `src/hack.js` becomes `/src/hack.js` on the target server. If you'd rather treat one of your workspace folders as the Bitburner root (so `src/hack.js` becomes `/hack.js` instead), set `bitburnerSync.syncDirectory` to that folder name. See the settings table below for more details.
 
@@ -57,6 +63,10 @@ These settings live under `bitburnerSync` in VS Code. To edit them:
 4. Use the gear icon at the top right of the settings tab to switch between **User** (applies to every workspace) and **Workspace** (applies only to the current project) scopes.
 
 Individual workspace settings are stored in `.vscode/settings.json` inside your project and override your global user settings — useful if you want a different `syncDirectory` per project.
+
+## Downloading from Bitburner
+
+`Bitburner: Download Files from Server` pulls every script whose extension is in `bitburnerSync.fileExtensions`. Files unique to the server (not present locally) are downloaded automatically. If any of the server's files would *overwrite* an existing local file, the extension prompts before clobbering — you can confirm or decline; declining keeps your local conflicts intact but the brand-new files are still downloaded.
 
 ## Excluding files
 

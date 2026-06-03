@@ -486,9 +486,36 @@ export const commands = {
 
 export { Uri, Disposable, ThemeColor, RelativePattern, StatusBarAlignment, MockFileSystemWatcher, MockStatusBarItem, MockOutputChannel };
 
+export type Memento = {
+    get<T>(key: string, def: T): T;
+    update(key: string, value: unknown): Promise<void>;
+};
+
 export type ExtensionContext = {
     subscriptions: { dispose(): unknown }[];
+    globalState: Memento;
+    workspaceState: Memento;
 };
+
+// Constructs an in-memory Memento, mirroring vscode.ExtensionContext.globalState /
+// workspaceState semantics tightly enough for the activation flow: get-with-default,
+// update returns void, no events.
+export function _makeMemento(initial?: Record<string, unknown>): Memento {
+    const store = new Map<string, unknown>(initial ? Object.entries(initial) : []);
+    return {
+        get<T>(key: string, def: T): T {
+            return (store.has(key) ? store.get(key) : def) as T;
+        },
+        update(key: string, value: unknown): Promise<void> {
+            if (value === undefined) {
+                store.delete(key);
+            } else {
+                store.set(key, value);
+            }
+            return Promise.resolve();
+        },
+    };
+}
 export type OutputChannel = MockOutputChannel;
 export type StatusBarItem = MockStatusBarItem;
 export type FileSystemWatcher = MockFileSystemWatcher;

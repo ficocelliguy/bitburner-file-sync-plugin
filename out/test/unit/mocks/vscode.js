@@ -16,6 +16,7 @@ exports._writeFile = _writeFile;
 exports._readFile = _readFile;
 exports._triggerSave = _triggerSave;
 exports._triggerConfigChange = _triggerConfigChange;
+exports._makeMemento = _makeMemento;
 class Uri {
     fsPath;
     scheme;
@@ -421,4 +422,24 @@ exports.commands = {
         return handler(...args);
     },
 };
+// Constructs an in-memory Memento, mirroring vscode.ExtensionContext.globalState /
+// workspaceState semantics tightly enough for the activation flow: get-with-default,
+// update returns void, no events.
+function _makeMemento(initial) {
+    const store = new Map(initial ? Object.entries(initial) : []);
+    return {
+        get(key, def) {
+            return (store.has(key) ? store.get(key) : def);
+        },
+        update(key, value) {
+            if (value === undefined) {
+                store.delete(key);
+            }
+            else {
+                store.set(key, value);
+            }
+            return Promise.resolve();
+        },
+    };
+}
 //# sourceMappingURL=vscode.js.map

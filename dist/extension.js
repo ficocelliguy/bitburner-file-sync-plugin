@@ -6083,55 +6083,27 @@ var SyncEngine = class {
       );
       return;
     }
-    const workspaceFolders = vscode3.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0) {
-      throw new Error("No workspace folder open");
-    }
-    const rootUri = workspaceFolders[0].uri;
-    const syncDir = this.config.syncDirectory;
-    const destBaseUri = syncDir ? vscode3.Uri.joinPath(rootUri, syncDir) : rootUri;
-    const fileNames = await this.api.getFileNames(this.config.targetServer);
-    if (fileNames.length === 0) {
-      vscode3.window.showWarningMessage("No files found on Bitburner server.");
+    const planResult = await this.buildDownloadPlan();
+    if (planResult === null) {
       return;
     }
-    if (fileNames.length > MAX_DOWNLOAD_FILE_COUNT) {
-      const msg2 = `Refusing to download: server returned ${fileNames.length} filenames (limit is ${MAX_DOWNLOAD_FILE_COUNT}). This usually indicates a corrupt save or a buggy server. Narrow bitburnerSync.fileExtensions or contact the server admin.`;
-      this.log(msg2);
-      vscode3.window.showErrorMessage(msg2);
-      return;
-    }
-    const allowedExts = this.config.fileExtensions;
-    const plan = [];
-    const conflicts = [];
-    let skipped = 0;
-    for (const filename of fileNames) {
-      try {
-        validateRemotePath(filename);
-      } catch (err) {
-        skipped++;
-        this.log(`Skipped (invalid name from server): ${JSON.stringify(filename)} \u2014 ${err instanceof Error ? err.message : err}`);
-        continue;
-      }
-      if (!matchesAllowedExtension(filename, allowedExts)) {
-        skipped++;
-        this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${filename}`);
-        continue;
-      }
-      const relativePath = filename.startsWith("/") ? filename.slice(1) : filename;
-      const destUri = vscode3.Uri.joinPath(destBaseUri, relativePath);
-      plan.push({ remote: filename, destUri });
-      if (await this.fileExists(destUri)) {
-        conflicts.push(filename);
+    const { entries, skipped } = planResult;
+    let includeExisting = true;
+    const existingRemotes = entries.filter((e) => e.existing).map((e) => e.remote);
+    if (existingRemotes.length > 0) {
+      includeExisting = await this.confirmOverwrite(existingRemotes);
+      if (!includeExisting) {
+        this.log(`Overwrite declined: ${existingRemotes.length} existing local file${existingRemotes.length === 1 ? "" : "s"} kept; new files will still be downloaded`);
       }
     }
-    if (conflicts.length > 0 && !await this.confirmOverwrite(conflicts)) {
-      this.log(`Download cancelled by user (${conflicts.length} local file${conflicts.length === 1 ? "" : "s"} would have been overwritten)`);
+    const toDownload = entries.filter((e) => includeExisting || !e.existing);
+    if (toDownload.length === 0 && skipped === 0) {
+      vscode3.window.showWarningMessage("Nothing to download.");
       return;
     }
     let downloaded = 0;
     let failed = 0;
-    for (const { remote, destUri } of plan) {
+    for (const { remote, destUri } of toDownload) {
       try {
         const content = await this.api.getFile(remote, this.config.targetServer);
         const byteLen = Buffer.byteLength(content, "utf8");
@@ -6154,6 +6126,84 @@ var SyncEngine = class {
     if (this.config.showNotifications) {
       vscode3.window.showInformationMessage(msg);
     }
+  }
+  // Returns the count of remote files that don't yet exist locally, after
+  // the same path/extension filtering downloadAll() applies. Used by the
+  // first-connect prompt in extension.ts to decide whether to ask the user
+  // about pulling files down.
+  async countNewRemoteFiles() {
+    if (this.config.fileExtensions.length === 0) {
+      return 0;
+    }
+    const planResult = await this.buildDownloadPlan({ silent: true });
+    if (planResult === null) {
+      return 0;
+    }
+    return planResult.entries.filter((e) => !e.existing).length;
+  }
+  // Listing + per-name validation + new/existing partition. Shared by
+  // downloadAll() and countNewRemoteFiles() so the two stay in sync on
+  // what counts as a downloadable file. Returns null when the caller
+  // should abort entirely (no workspace, empty listing, server returned
+  // an unreasonable count). When `silent` is true the caller is asking
+  // a question, not running the download — suppress user-facing warnings
+  // and per-skip log spam.
+  async buildDownloadPlan(opts = {}) {
+    const silent = !!opts.silent;
+    const workspaceFolders = vscode3.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      if (silent) {
+        return null;
+      }
+      throw new Error("No workspace folder open");
+    }
+    const rootUri = workspaceFolders[0].uri;
+    const syncDir = this.config.syncDirectory;
+    const destBaseUri = syncDir ? vscode3.Uri.joinPath(rootUri, syncDir) : rootUri;
+    const fileNames = await this.api.getFileNames(this.config.targetServer);
+    if (fileNames.length === 0) {
+      if (!silent) {
+        vscode3.window.showWarningMessage("No files found on Bitburner server.");
+      }
+      return null;
+    }
+    if (fileNames.length > MAX_DOWNLOAD_FILE_COUNT) {
+      if (!silent) {
+        const msg = `Refusing to download: server returned ${fileNames.length} filenames (limit is ${MAX_DOWNLOAD_FILE_COUNT}). This usually indicates a corrupt save or a buggy server. Narrow bitburnerSync.fileExtensions or contact the server admin.`;
+        this.log(msg);
+        vscode3.window.showErrorMessage(msg);
+      }
+      return null;
+    }
+    const allowedExts = this.config.fileExtensions;
+    const entries = [];
+    let skipped = 0;
+    for (const filename of fileNames) {
+      try {
+        validateRemotePath(filename);
+      } catch (err) {
+        skipped++;
+        if (!silent) {
+          this.log(`Skipped (invalid name from server): ${JSON.stringify(filename)} \u2014 ${err instanceof Error ? err.message : err}`);
+        }
+        continue;
+      }
+      if (!matchesAllowedExtension(filename, allowedExts)) {
+        skipped++;
+        if (!silent) {
+          this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${filename}`);
+        }
+        continue;
+      }
+      const relativePath = filename.startsWith("/") ? filename.slice(1) : filename;
+      const destUri = vscode3.Uri.joinPath(destBaseUri, relativePath);
+      entries.push({
+        remote: filename,
+        destUri,
+        existing: await this.fileExists(destUri)
+      });
+    }
+    return { entries, skipped };
   }
   async fileExists(uri) {
     try {
@@ -6202,7 +6252,9 @@ var SyncEngine = class {
         modal: true,
         detail: `Downloading from Bitburner will replace the following ${noun}:
 
-${list}${more}`
+${list}${more}
+
+New files (not yet present locally) will be downloaded either way.`
       },
       "Overwrite"
     );
@@ -6498,6 +6550,8 @@ var syncEngine;
 var fileWatcher;
 var statusBar;
 var outputChannel;
+var FIRST_INSTALL_KEY = "bitburnerSync.hasOpenedConfigOnFirstInstall";
+var FIRST_CONNECT_KEY = "bitburnerSync.hasConnectedBefore";
 async function startServer() {
   if (wsServer.state !== "stopped" && wsServer.state !== "error") {
     vscode6.window.showInformationMessage("Sync server is already running.");
@@ -6547,6 +6601,7 @@ function activate(context) {
         outputChannel.appendLine(`Auto-download definitions failed: ${err}`);
       }
     }
+    await maybePromptFirstConnectDownload(context);
   });
   wsServer.on("disconnected", () => {
     outputChannel.appendLine("Bitburner disconnected.");
@@ -6639,6 +6694,41 @@ function activate(context) {
   );
   if (config.autoStart) {
     startServer();
+  }
+  void maybeOpenSettingsOnFirstInstall(context);
+}
+async function maybeOpenSettingsOnFirstInstall(context) {
+  if (context.globalState.get(FIRST_INSTALL_KEY, false)) {
+    return;
+  }
+  await context.globalState.update(FIRST_INSTALL_KEY, true);
+  try {
+    await vscode6.commands.executeCommand("workbench.action.openSettings", "@ext:bitburner-file-sync-plugin");
+  } catch (err) {
+    outputChannel.appendLine(`Could not open settings UI: ${err}`);
+  }
+}
+async function maybePromptFirstConnectDownload(context) {
+  if (context.workspaceState.get(FIRST_CONNECT_KEY, false)) {
+    return;
+  }
+  await context.workspaceState.update(FIRST_CONNECT_KEY, true);
+  try {
+    const newCount = await syncEngine.countNewRemoteFiles();
+    if (newCount <= 0) {
+      return;
+    }
+    const noun = newCount === 1 ? "script" : "scripts";
+    const choice = await vscode6.window.showInformationMessage(
+      `Bitburner has ${newCount} ${noun} not in this workspace. Download them now?`,
+      "Download",
+      "Not now"
+    );
+    if (choice === "Download") {
+      await syncEngine.downloadAll();
+    }
+  } catch (err) {
+    outputChannel.appendLine(`First-connect download prompt failed: ${err}`);
   }
 }
 function deactivate() {
