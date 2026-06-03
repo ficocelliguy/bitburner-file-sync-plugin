@@ -6560,7 +6560,8 @@ async function startServer() {
   try {
     await wsServer.start(config.port);
     fileWatcher.start();
-    vscode6.window.showInformationMessage(`Bitburner sync server started on port ${config.port}`);
+    vscode6.window.showInformationMessage("In-game under Options->Remote API, enter that port and hit Connect.");
+    vscode6.window.showInformationMessage(`Bitburner sync server started on port ${config.port}.`);
   } catch (err) {
     vscode6.window.showErrorMessage(`Failed to start server: ${err}`);
   }
