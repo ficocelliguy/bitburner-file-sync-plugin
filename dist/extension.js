@@ -6383,7 +6383,13 @@ New files (not yet present locally) will be downloaded either way.`
   }
   async ensureTsConfig(rootUri) {
     const tsconfigUri = vscode3.Uri.joinPath(rootUri, "tsconfig.json");
-    const defaultPaths = { [NS_PATH_ALIAS]: [DEFINITIONS_FILE] };
+    const syncDir = this.config.syncDirectory;
+    const depth = syncDir ? syncDir.split("/").filter(Boolean).length : 0;
+    const toRoot = "../".repeat(depth);
+    const defaultPaths = {
+      [NS_PATH_ALIAS]: [toRoot + DEFINITIONS_FILE],
+      ["@/*"]: ["./*"]
+    };
     const ownedPaths = {};
     if (this.bundledTypesDir !== void 0) {
       const norm = this.bundledTypesDir.replace(/\\/g, "/");
@@ -6415,7 +6421,8 @@ New files (not yet present locally) will be downloaded either way.`
           checkJs: true,
           noEmit: true,
           jsx: "react",
-          paths: { ...wanted.paths, ...wanted.ownedPaths }
+          paths: { ...wanted.paths, ...wanted.ownedPaths },
+          baseUrl: syncDir || "."
         },
         include: ["**/*"],
         files: wanted.files

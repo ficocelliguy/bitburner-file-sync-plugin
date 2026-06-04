@@ -601,9 +601,20 @@ export class SyncEngine {
 
     private async ensureTsConfig(rootUri: vscode.Uri): Promise<void> {
         const tsconfigUri = vscode.Uri.joinPath(rootUri, 'tsconfig.json');
+        // `baseUrl` is set to the sync directory so bare imports like
+        // `import "utils.js"` resolve against the user's script root. Because
+        // `paths` entries are themselves resolved relative to `baseUrl`, the
+        // `@ns` mapping has to climb back out to the workspace root where the
+        // d.ts actually lives.
+        const syncDir = this.config.syncDirectory;
+        const depth = syncDir ? syncDir.split('/').filter(Boolean).length : 0;
+        const toRoot = '../'.repeat(depth);
         // `@ns` is add-if-missing so users who deliberately point it at a
         // different file aren't overwritten.
-        const defaultPaths: Record<string, string[]> = { [NS_PATH_ALIAS]: [DEFINITIONS_FILE] };
+        const defaultPaths: Record<string, string[]> = {
+            [NS_PATH_ALIAS]: [toRoot + DEFINITIONS_FILE],
+            ["@/*"]: ["./*"],
+        };
         // `react` and `react-dom` are *owned*: their values are absolute
         // paths into the installed extension directory, which moves on
         // every extension upgrade. We always rewrite them to the current
@@ -649,6 +660,7 @@ export class SyncEngine {
                     noEmit: true,
                     jsx: 'react',
                     paths: { ...wanted.paths, ...wanted.ownedPaths },
+                    baseUrl: syncDir || ".",
                 },
                 include: ['**/*'],
                 files: wanted.files,

@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.0.7
+- Added baseUrl based on the sync directory to .tsconfig, so `import x from "foo.js";` is handled relative to the script root, like in-game
+- Added support for the `@/` import notation
+
 ## 0.0.6
 - Enhanced .tsconfig to support @ns imports
 - Added global shim to make `NS` and other types available in-game also available in VS Code

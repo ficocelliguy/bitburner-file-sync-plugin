@@ -1026,7 +1026,12 @@ suite('SyncEngine', () => {
             const parsed = JSON.parse(raw);
             assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
             assert_1.strict.equal(parsed.compilerOptions.target, 'ES2022');
-            assert_1.strict.deepEqual(parsed.compilerOptions.paths, { '@ns': ['NetscriptDefinitions.d.ts'] });
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, {
+                '@ns': ['NetscriptDefinitions.d.ts'],
+                '@/*': ['./*'],
+            });
+            // baseUrl defaults to the workspace root when no syncDirectory is set.
+            assert_1.strict.equal(parsed.compilerOptions.baseUrl, '.');
             // Matches Bitburner's runtime (classic React.createElement factory).
             assert_1.strict.equal(parsed.compilerOptions.jsx, 'react');
         });
@@ -1040,7 +1045,10 @@ suite('SyncEngine', () => {
             await engine.downloadDefinitions();
             const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
             assert_1.strict.deepEqual(parsed.files, ['existing.d.ts', 'NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
-            assert_1.strict.deepEqual(parsed.compilerOptions.paths, { '@ns': ['NetscriptDefinitions.d.ts'] });
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, {
+                '@ns': ['NetscriptDefinitions.d.ts'],
+                '@/*': ['./*'],
+            });
             assert_1.strict.equal(parsed.compilerOptions.jsx, 'react');
             // Preserves untouched fields
             assert_1.strict.equal(parsed.compilerOptions.target, 'ES2020');
@@ -1076,6 +1084,7 @@ suite('SyncEngine', () => {
             assert_1.strict.deepEqual(parsed.compilerOptions.paths, {
                 '~/*': ['src/*'],
                 '@ns': ['NetscriptDefinitions.d.ts'],
+                '@/*': ['./*'],
             });
             // User-set baseUrl is untouched.
             assert_1.strict.equal(parsed.compilerOptions.baseUrl, '.');
@@ -1085,7 +1094,10 @@ suite('SyncEngine', () => {
                 compilerOptions: {
                     target: 'ES2020',
                     jsx: 'react',
-                    paths: { '@ns': ['NetscriptDefinitions.d.ts'] },
+                    paths: {
+                        '@ns': ['NetscriptDefinitions.d.ts'],
+                        '@/*': ['./*'],
+                    },
                 },
                 files: ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts'],
             });
@@ -1108,7 +1120,10 @@ suite('SyncEngine', () => {
             await engine.downloadDefinitions();
             const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
             assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
-            assert_1.strict.deepEqual(parsed.compilerOptions.paths, { '@ns': ['NetscriptDefinitions.d.ts'] });
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, {
+                '@ns': ['NetscriptDefinitions.d.ts'],
+                '@/*': ['./*'],
+            });
             assert_1.strict.equal(parsed.compilerOptions.jsx, 'react');
         });
         test('creates a files array if the existing tsconfig has none', async () => {
@@ -1120,7 +1135,10 @@ suite('SyncEngine', () => {
             await engine.downloadDefinitions();
             const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
             assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
-            assert_1.strict.deepEqual(parsed.compilerOptions.paths, { '@ns': ['NetscriptDefinitions.d.ts'] });
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, {
+                '@ns': ['NetscriptDefinitions.d.ts'],
+                '@/*': ['./*'],
+            });
             assert_1.strict.equal(parsed.compilerOptions.jsx, 'react');
         });
         test('leaves an unparseable tsconfig untouched and warns the user', async () => {
@@ -1155,7 +1173,7 @@ suite('SyncEngine', () => {
                 '  // already wired up',
                 '  "compilerOptions": {',
                 '    "jsx": "react",',
-                '    "paths": { "@ns": ["NetscriptDefinitions.d.ts"] },',
+                '    "paths": { "@ns": ["NetscriptDefinitions.d.ts"], "@/*": ["./*"] },',
                 '  },',
                 '  "files": ["NetscriptDefinitions.d.ts", "NetscriptGlobals.d.ts"],',
                 '}',
@@ -1198,7 +1216,7 @@ suite('SyncEngine', () => {
                 '  "banner": "{ foo ,} bar",',
                 '  "compilerOptions": {',
                 '    "jsx": "react",',
-                '    "paths": { "@ns": ["NetscriptDefinitions.d.ts"] },',
+                '    "paths": { "@ns": ["NetscriptDefinitions.d.ts"], "@/*": ["./*"] },',
                 '  },',
                 '  "files": ["NetscriptDefinitions.d.ts", "NetscriptGlobals.d.ts"],',
                 '}',
@@ -1245,7 +1263,10 @@ suite('SyncEngine', () => {
             assert_1.strict.match(shim, /type NS = _NS\.NS;/);
             const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
             assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
-            assert_1.strict.deepEqual(parsed.compilerOptions.paths, { '@ns': ['NetscriptDefinitions.d.ts'] });
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths, {
+                '@ns': ['NetscriptDefinitions.d.ts'],
+                '@/*': ['./*'],
+            });
         });
     });
 });
