@@ -42,6 +42,10 @@
         "title": "Bitburner: Download Files from Server"
       },
       {
+        "command": "bitburnerSync.downloadSelectedFiles",
+        "title": "Bitburner: Download Files Matching Pattern..."
+      },
+      {
         "command": "bitburnerSync.toggleServer",
         "title": "Bitburner: Toggle Sync Server"
       }

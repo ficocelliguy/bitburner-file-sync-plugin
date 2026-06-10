@@ -226,6 +226,8 @@ interface State {
     readFileError: Error | undefined;
     writeFileError: Error | undefined;
     warningResponseQueue: (string | undefined)[];
+    inputBoxResponseQueue: (string | undefined)[];
+    inputBoxCalls: { options: unknown }[];
 }
 
 export const _state: State = {
@@ -247,6 +249,8 @@ export const _state: State = {
     readFileError: undefined,
     writeFileError: undefined,
     warningResponseQueue: [],
+    inputBoxResponseQueue: [],
+    inputBoxCalls: [],
 };
 
 export function _reset(): void {
@@ -268,10 +272,16 @@ export function _reset(): void {
     _state.readFileError = undefined;
     _state.writeFileError = undefined;
     _state.warningResponseQueue = [];
+    _state.inputBoxResponseQueue = [];
+    _state.inputBoxCalls = [];
 }
 
 export function _queueWarningResponse(value: string | undefined): void {
     _state.warningResponseQueue.push(value);
+}
+
+export function _queueInputBoxResponse(value: string | undefined): void {
+    _state.inputBoxResponseQueue.push(value);
 }
 
 export function _setConfig(section: string, key: string, value: unknown): void {
@@ -451,6 +461,10 @@ export const window = {
         _state.notifications.push({ kind: 'error', message });
         return Promise.resolve(undefined);
     },
+    showInputBox(options?: unknown): Promise<string | undefined> {
+        _state.inputBoxCalls.push({ options: options ?? {} });
+        return Promise.resolve(_state.inputBoxResponseQueue.shift());
+    },
     createOutputChannel(name: string): MockOutputChannel {
         const c = new MockOutputChannel(name);
         _state.outputChannels.push(c);
@@ -487,6 +501,8 @@ export const commands = {
 export { Uri, Disposable, ThemeColor, RelativePattern, StatusBarAlignment, MockFileSystemWatcher, MockStatusBarItem, MockOutputChannel };
 
 export type Memento = {
+    keys(): readonly string[];
+    get<T>(key: string): T | undefined;
     get<T>(key: string, def: T): T;
     update(key: string, value: unknown): Promise<void>;
 };
@@ -506,10 +522,14 @@ export type ExtensionContext = {
 // update returns void, no events.
 export function _makeMemento(initial?: Record<string, unknown>): Memento {
     const store = new Map<string, unknown>(initial ? Object.entries(initial) : []);
+    function get<T>(key: string): T | undefined;
+    function get<T>(key: string, def: T): T;
+    function get<T>(key: string, def?: T): T | undefined {
+        return (store.has(key) ? store.get(key) : def) as T | undefined;
+    }
     return {
-        get<T>(key: string, def: T): T {
-            return (store.has(key) ? store.get(key) : def) as T;
-        },
+        keys: () => Array.from(store.keys()),
+        get,
         update(key: string, value: unknown): Promise<void> {
             if (value === undefined) {
                 store.delete(key);

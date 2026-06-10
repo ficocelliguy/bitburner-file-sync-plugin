@@ -84,6 +84,7 @@ const MAX_DOWNLOAD_FILE_COUNT = 5000;
 class SyncEngine {
     api;
     config;
+    memento;
     pathMapper;
     debounceTimers = new Map();
     outputChannel;
@@ -95,9 +96,10 @@ class SyncEngine {
     // bundled types; in that case the shim falls back to typing
     // React/ReactDOM as `any`.
     bundledTypesDir;
-    constructor(api, config, outputChannel, bundledTypesDir) {
+    constructor(api, config, outputChannel, bundledTypesDir, memento) {
         this.api = api;
         this.config = config;
+        this.memento = memento;
         this.pathMapper = new PathMapper_1.PathMapper(config);
         this.outputChannel = outputChannel;
         this.bundledTypesDir = bundledTypesDir;
@@ -231,6 +233,22 @@ class SyncEngine {
         this.debounceTimers.set(key, timer);
     }
     async downloadAll() {
+        return this.downloadFiles();
+    }
+    async downloadSelectedFiles() {
+        const value = this.memento?.get("bitburnerSync.downloadSelectedFilesSelection") ?? "**/*.js";
+        const input = await vscode.window.showInputBox({
+            title: "Specify files to download",
+            prompt: "for example, 'scripts/**' for all files under the scripts folder",
+            value,
+        });
+        if (!input) {
+            return;
+        }
+        await this.memento?.update("bitburnerSync.downloadSelectedFilesSelection", input);
+        return this.downloadFiles(input);
+    }
+    async downloadFiles(inclusionPattern) {
         // Honor the documented "sync nothing" opt-out symmetrically: with no
         // allowed extensions, the whole listing → filter → fetch loop is dead
         // weight. Bail before the getFileNames RPC so the user gets the same
@@ -239,7 +257,7 @@ class SyncEngine {
             vscode.window.showWarningMessage('bitburnerSync.fileExtensions is set to []. Nothing will be downloaded. Remove the setting to fall back to the defaults.');
             return;
         }
-        const planResult = await this.buildDownloadPlan();
+        const planResult = await this.buildDownloadPlan({ inclusionPattern });
         if (planResult === null) {
             return;
         }
@@ -400,7 +418,7 @@ class SyncEngine {
                 }
                 continue;
             }
-            if (!matchesAllowedExtension(filename, allowedExts)) {
+            if (!matchesAllowedExtension(filename, allowedExts) || !matchesIncludePattern(filename, opts.inclusionPattern)) {
                 skipped++;
                 if (!silent) {
                     this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${filename}`);
@@ -732,6 +750,12 @@ function matchesAllowedExtension(filename, allowed) {
         return false;
     }
     return allowed.includes(filename.slice(lastDot).toLowerCase());
+}
+function matchesIncludePattern(filename, inclusionPattern) {
+    if (!inclusionPattern) {
+        return true;
+    }
+    return (0, minimatch_1.minimatch)(filename, inclusionPattern, { dot: true });
 }
 // Removes // line comments, /* block */ comments, and trailing commas so a
 // JSONC document can be fed to JSON.parse. Strings (including escaped quotes)

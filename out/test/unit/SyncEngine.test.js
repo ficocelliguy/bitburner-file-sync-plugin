@@ -39,14 +39,15 @@ const Configuration_1 = require("../../config/Configuration");
 const SyncEngine_1 = require("../../sync/SyncEngine");
 const helpers_1 = require("./helpers");
 const BitburnerApi_1 = require("../../api/BitburnerApi");
-const { Uri, RelativePattern, _reset, _setWorkspaceFolders, _setConfig, _writeFile, _readFile, _state, _queueWarningResponse, } = vscodeMock;
+const { Uri, RelativePattern, _reset, _setWorkspaceFolders, _setConfig, _writeFile, _readFile, _state, _queueWarningResponse, _queueInputBoxResponse, _makeMemento, } = vscodeMock;
 function buildEngine(opts = {}) {
     const rpc = new helpers_1.FakeRpcClient();
     const api = new BitburnerApi_1.BitburnerApi(rpc);
     const config = new Configuration_1.Configuration();
     const output = vscodeMock.window.createOutputChannel('test');
-    const engine = new SyncEngine_1.SyncEngine(api, config, output, opts.bundledTypesDir);
-    return { engine, api, rpc, output };
+    const memento = opts.memento ?? _makeMemento();
+    const engine = new SyncEngine_1.SyncEngine(api, config, output, opts.bundledTypesDir, memento);
+    return { engine, api, rpc, output, memento };
 }
 suite('SyncEngine', () => {
     setup(() => {
@@ -766,6 +767,110 @@ suite('SyncEngine', () => {
             assert_1.strict.equal(_readFile('/workspace/y.js'), 'Y');
             const warnings = _state.notifications.filter(n => n.kind === 'warning');
             assert_1.strict.equal(warnings.length, 0, 'no prompt when there are no conflicts');
+        });
+    });
+    suite('downloadSelectedFiles', () => {
+        test('returns without listing the server when the user cancels the input box', async () => {
+            _queueInputBoxResponse(undefined);
+            const { engine, rpc } = buildEngine();
+            await engine.downloadSelectedFiles();
+            assert_1.strict.equal(rpc.calls.length, 0, 'cancelled input must not trigger the listing RPC');
+            assert_1.strict.equal(_state.inputBoxCalls.length, 1);
+        });
+        test('downloads only files whose remote path matches the supplied glob', async () => {
+            _queueInputBoxResponse('lib/**');
+            const { engine, rpc } = buildEngine();
+            // Server returns mixed paths; only the two under lib/ match.
+            rpc.queueResponse('getFileNames', ['main.js', 'lib/util.js', 'lib/nested/deep.js', 'scripts/foo.js']);
+            rpc.queueResponse('getFile', 'util', 'deep');
+            await engine.downloadSelectedFiles();
+            const fetched = rpc.calls.filter(c => c.method === 'getFile').map(c => c.params.filename);
+            assert_1.strict.deepEqual(fetched, ['lib/util.js', 'lib/nested/deep.js']);
+            assert_1.strict.equal(_readFile('/workspace/lib/util.js'), 'util');
+            assert_1.strict.equal(_readFile('/workspace/lib/nested/deep.js'), 'deep');
+            assert_1.strict.equal(_readFile('/workspace/main.js'), undefined);
+            assert_1.strict.equal(_readFile('/workspace/scripts/foo.js'), undefined);
+        });
+        test('extension filter still applies — pattern matches do not override fileExtensions', async () => {
+            _queueInputBoxResponse('**/*');
+            const { engine, rpc } = buildEngine();
+            // .cct is not in the default fileExtensions; the pattern matches but the extension does not.
+            rpc.queueResponse('getFileNames', ['main.js', 'contract.cct']);
+            rpc.queueResponse('getFile', 'main');
+            await engine.downloadSelectedFiles();
+            const fetched = rpc.calls.filter(c => c.method === 'getFile').map(c => c.params.filename);
+            assert_1.strict.deepEqual(fetched, ['main.js']);
+        });
+        test('makes no getFile calls when the pattern matches nothing and reports skips in the summary', async () => {
+            _queueInputBoxResponse('nonexistent/**');
+            const { engine, rpc, output } = buildEngine();
+            rpc.queueResponse('getFileNames', ['main.js', 'lib/util.js']);
+            await engine.downloadSelectedFiles();
+            assert_1.strict.equal(rpc.calls.filter(c => c.method === 'getFile').length, 0);
+            const summary = output.lines.find(l => /Download complete/.test(l)) ?? '';
+            assert_1.strict.match(summary, /0 downloaded, 0 failed, 2 skipped/);
+        });
+        test('honors syncDirectory for the download destination', async () => {
+            _setConfig('bitburnerSync', 'syncDirectory', 'src');
+            _queueInputBoxResponse('lib/**');
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFileNames', ['lib/util.js']);
+            rpc.queueResponse('getFile', 'util');
+            await engine.downloadSelectedFiles();
+            assert_1.strict.equal(_readFile('/workspace/src/lib/util.js'), 'util');
+        });
+        test('warns and skips the listing RPC when fileExtensions is explicitly []', async () => {
+            _setConfig('bitburnerSync', 'fileExtensions', []);
+            _queueInputBoxResponse('**/*.js');
+            const { engine, rpc } = buildEngine();
+            await engine.downloadSelectedFiles();
+            assert_1.strict.equal(rpc.calls.length, 0);
+            const warnings = _state.notifications.filter(n => n.kind === 'warning');
+            assert_1.strict.equal(warnings.length, 1);
+            assert_1.strict.match(warnings[0].message, /Nothing will be downloaded/);
+        });
+        suite('saved pattern (workspaceState)', () => {
+            const KEY = 'bitburnerSync.downloadSelectedFilesSelection';
+            test("pre-fills the input box with '**/*.js' when no pattern has been saved", async () => {
+                _queueInputBoxResponse(undefined); // cancel
+                const { engine } = buildEngine();
+                await engine.downloadSelectedFiles();
+                assert_1.strict.equal(_state.inputBoxCalls.length, 1);
+                const opts = _state.inputBoxCalls[0].options;
+                assert_1.strict.equal(opts.value, '**/*.js');
+            });
+            test('pre-fills the input box with the last-used pattern from workspaceState', async () => {
+                const memento = _makeMemento({ [KEY]: 'scripts/**' });
+                _queueInputBoxResponse(undefined); // cancel — we only care about the seeded value
+                const { engine } = buildEngine({ memento });
+                await engine.downloadSelectedFiles();
+                const opts = _state.inputBoxCalls[0].options;
+                assert_1.strict.equal(opts.value, 'scripts/**');
+            });
+            test('persists the entered pattern to workspaceState after a successful run', async () => {
+                _queueInputBoxResponse('lib/**');
+                const { engine, rpc, memento } = buildEngine();
+                rpc.queueResponse('getFileNames', ['lib/util.js']);
+                rpc.queueResponse('getFile', 'util');
+                await engine.downloadSelectedFiles();
+                assert_1.strict.equal(memento.get(KEY), 'lib/**');
+            });
+            test('does not overwrite the saved pattern when the user cancels the input box', async () => {
+                const memento = _makeMemento({ [KEY]: 'lib/**' });
+                _queueInputBoxResponse(undefined); // user hits Escape
+                const { engine } = buildEngine({ memento });
+                await engine.downloadSelectedFiles();
+                assert_1.strict.equal(memento.get(KEY), 'lib/**');
+            });
+            test('updates the saved pattern when the user enters a different one', async () => {
+                const memento = _makeMemento({ [KEY]: 'lib/**' });
+                _queueInputBoxResponse('scripts/**');
+                const { engine, rpc } = buildEngine({ memento });
+                rpc.queueResponse('getFileNames', ['scripts/foo.js']);
+                rpc.queueResponse('getFile', 'foo');
+                await engine.downloadSelectedFiles();
+                assert_1.strict.equal(memento.get(KEY), 'scripts/**');
+            });
         });
     });
     suite('countNewRemoteFiles', () => {

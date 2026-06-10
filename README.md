@@ -29,6 +29,8 @@ If you have any questions, ask on the [official Discord](https://discord.gg/TFc3
 
 `Bitburner: Download Files from Server` pulls every script whose extension is in `bitburnerSync.fileExtensions`. Files unique to the server (not present locally) are downloaded automatically. If any of the server's files would *overwrite* an existing local file, the extension prompts before clobbering — you can confirm or decline; declining keeps your local conflicts intact but the brand-new files are still downloaded.
 
+`Bitburner: Download Files Matching Pattern...` is the same operation narrowed to a glob you type in (e.g. `**/*.js`, `scripts/**`, `lib/utils.js`). The extension's `fileExtensions` filter still applies, so the result is the intersection of "extension allowed" and "matches your pattern." Pattern syntax matches the [`minimatch`](https://github.com/isaacs/minimatch) rules described under [Pattern syntax](#pattern-syntax) — in particular, `*` does not cross `/`, so use `**/*.js` (not `*.js`) to match `.js` files anywhere in the tree.
+
 ## Commands
 
 Open the Command Palette (`Ctrl+Shift+P`) and search for:
@@ -40,6 +42,7 @@ Open the Command Palette (`Ctrl+Shift+P`) and search for:
 | `Bitburner: Sync Current File` | Push the active editor file to Bitburner                     |
 | `Bitburner: Sync All Files` | Push all matching workspace files to Bitburner               |
 | `Bitburner: Download Files from Server` | Pull all files to the workspace from Bitburner               |
+| `Bitburner: Download Files Matching Pattern...` | Prompt for a glob and pull only files whose remote path matches |
 | `Bitburner: Download Type Definitions` | Download `NetscriptDefinitions.d.ts` to your workspace root  |
 
 ## Extension Settings

@@ -73,6 +73,7 @@ suite('extension activate()', () => {
             'bitburnerSync.syncAll',
             'bitburnerSync.getDefinitions',
             'bitburnerSync.downloadAll',
+            'bitburnerSync.downloadSelectedFiles',
         ];
         for (const name of expected) {
             assert_1.strict.ok(_state.commands.has(name), `expected command ${name} to be registered`);

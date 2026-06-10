@@ -68,7 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // imports against the bundled @types copies instead of forcing each
     // user to install them.
     const bundledTypesDir = path.join(context.extensionPath, 'dist', 'types');
-    syncEngine = new SyncEngine(api, config, outputChannel, bundledTypesDir);
+    syncEngine = new SyncEngine(api, config, outputChannel, bundledTypesDir, context.workspaceState);
     fileWatcher = new FileWatcher(syncEngine, config);
     statusBar = new StatusBar();
 
@@ -160,6 +160,18 @@ export function activate(context: vscode.ExtensionContext): void {
             }
             try {
                 await syncEngine.downloadAll();
+            } catch (err) {
+                vscode.window.showErrorMessage(`Failed to download files: ${err}`);
+            }
+        }),
+        vscode.commands.registerCommand('bitburnerSync.downloadSelectedFiles', async () => {
+            await ensureServerStarted();
+            if (!wsServer.isConnected) {
+                vscode.window.showWarningMessage('Not connected to Bitburner.');
+                return;
+            }
+            try {
+                await syncEngine.downloadSelectedFiles();
             } catch (err) {
                 vscode.window.showErrorMessage(`Failed to download files: ${err}`);
             }

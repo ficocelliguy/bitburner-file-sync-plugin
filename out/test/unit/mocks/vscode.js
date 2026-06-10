@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MockOutputChannel = exports.MockStatusBarItem = exports.MockFileSystemWatcher = exports.StatusBarAlignment = exports.RelativePattern = exports.ThemeColor = exports.Disposable = exports.Uri = exports.commands = exports.window = exports.workspace = exports._state = void 0;
 exports._reset = _reset;
 exports._queueWarningResponse = _queueWarningResponse;
+exports._queueInputBoxResponse = _queueInputBoxResponse;
 exports._setConfig = _setConfig;
 exports._setLanguageConfig = _setLanguageConfig;
 exports._setWorkspaceFolders = _setWorkspaceFolders;
@@ -210,6 +211,8 @@ exports._state = {
     readFileError: undefined,
     writeFileError: undefined,
     warningResponseQueue: [],
+    inputBoxResponseQueue: [],
+    inputBoxCalls: [],
 };
 function _reset() {
     exports._state.configValues = new Map();
@@ -230,9 +233,14 @@ function _reset() {
     exports._state.readFileError = undefined;
     exports._state.writeFileError = undefined;
     exports._state.warningResponseQueue = [];
+    exports._state.inputBoxResponseQueue = [];
+    exports._state.inputBoxCalls = [];
 }
 function _queueWarningResponse(value) {
     exports._state.warningResponseQueue.push(value);
+}
+function _queueInputBoxResponse(value) {
+    exports._state.inputBoxResponseQueue.push(value);
 }
 function _setConfig(section, key, value) {
     exports._state.configValues.set(`${section}.${key}`, value);
@@ -391,6 +399,10 @@ exports.window = {
         exports._state.notifications.push({ kind: 'error', message });
         return Promise.resolve(undefined);
     },
+    showInputBox(options) {
+        exports._state.inputBoxCalls.push({ options: options ?? {} });
+        return Promise.resolve(exports._state.inputBoxResponseQueue.shift());
+    },
     createOutputChannel(name) {
         const c = new MockOutputChannel(name);
         exports._state.outputChannels.push(c);
@@ -427,10 +439,12 @@ exports.commands = {
 // update returns void, no events.
 function _makeMemento(initial) {
     const store = new Map(initial ? Object.entries(initial) : []);
+    function get(key, def) {
+        return (store.has(key) ? store.get(key) : def);
+    }
     return {
-        get(key, def) {
-            return (store.has(key) ? store.get(key) : def);
-        },
+        keys: () => Array.from(store.keys()),
+        get,
         update(key, value) {
             if (value === undefined) {
                 store.delete(key);

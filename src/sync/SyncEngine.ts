@@ -77,6 +77,7 @@ export class SyncEngine {
         private readonly config: Configuration,
         outputChannel: vscode.OutputChannel,
         bundledTypesDir?: string,
+        private readonly memento?: vscode.Memento,
     ) {
         this.pathMapper = new PathMapper(config);
         this.outputChannel = outputChannel;
@@ -227,6 +228,24 @@ export class SyncEngine {
     }
 
     async downloadAll(): Promise<void> {
+        return this.downloadFiles();
+    }
+
+    async downloadSelectedFiles(): Promise<void> {
+        const value = this.memento?.get<string>("bitburnerSync.downloadSelectedFilesSelection") ?? "**/*.js";
+        const input = await vscode.window.showInputBox({
+            title: "Specify files to download",
+            prompt: "for example, 'scripts/**' for all files under the scripts folder, or '**/*.json' for all json files",
+            value,
+        });
+        if (!input) {
+            return;
+        }
+        await this.memento?.update("bitburnerSync.downloadSelectedFilesSelection", input);
+        return this.downloadFiles(input);
+    }
+
+    async downloadFiles(inclusionPattern?: string): Promise<void> {
         // Honor the documented "sync nothing" opt-out symmetrically: with no
         // allowed extensions, the whole listing → filter → fetch loop is dead
         // weight. Bail before the getFileNames RPC so the user gets the same
@@ -237,7 +256,7 @@ export class SyncEngine {
             );
             return;
         }
-        const planResult = await this.buildDownloadPlan();
+        const planResult = await this.buildDownloadPlan({inclusionPattern});
         if (planResult === null) {
             return;
         }
@@ -369,7 +388,7 @@ export class SyncEngine {
     // a question, not running the download — suppress user-facing warnings
     // and per-skip log spam.
     private async buildDownloadPlan(
-        opts: { silent?: boolean } = {}
+        opts: { silent?: boolean, inclusionPattern?: string } = {}
     ): Promise<{
         entries: DownloadPlanEntry[];
         skipped: number;
@@ -416,7 +435,7 @@ export class SyncEngine {
                 }
                 continue;
             }
-            if (!matchesAllowedExtension(filename, allowedExts)) {
+            if (!matchesAllowedExtension(filename, allowedExts) || !matchesIncludePattern(filename, opts.inclusionPattern)) {
                 skipped++;
                 if (!silent) {
                     this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${filename}`);
@@ -780,6 +799,13 @@ function matchesAllowedExtension(filename: string, allowed: string[]): boolean {
         return false;
     }
     return allowed.includes(filename.slice(lastDot).toLowerCase());
+}
+
+function matchesIncludePattern(filename: string, inclusionPattern?: string): boolean {
+    if (!inclusionPattern) {
+        return true;
+    }
+    return minimatch(filename, inclusionPattern, {dot: true});
 }
 
 // Removes // line comments, /* block */ comments, and trailing commas so a
