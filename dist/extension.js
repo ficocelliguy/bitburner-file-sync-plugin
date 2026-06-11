@@ -6099,7 +6099,7 @@ var SyncEngine = class {
     const value = this.memento?.get("bitburnerSync.downloadSelectedFilesSelection") ?? "**/*.js";
     const input = await vscode3.window.showInputBox({
       title: "Specify files to download",
-      prompt: "for example, 'scripts/**' for all files under the scripts folder",
+      prompt: "for example, 'scripts/**' for all files under the scripts folder, or '**/*.json' for all json files",
       value
     });
     if (!input) {
@@ -6401,20 +6401,77 @@ New files (not yet present locally) will be downloaded either way.`
   }
   async ensureTsConfig(rootUri) {
     const tsconfigUri = vscode3.Uri.joinPath(rootUri, "tsconfig.json");
+    let raw;
+    try {
+      const bytes = await vscode3.workspace.fs.readFile(tsconfigUri);
+      raw = Buffer.from(bytes).toString("utf8");
+    } catch {
+    }
+    let strictParsed;
+    if (raw !== void 0) {
+      try {
+        strictParsed = JSON.parse(raw);
+      } catch {
+      }
+    }
+    let jsoncParsed = strictParsed;
+    if (jsoncParsed === void 0 && raw !== void 0) {
+      try {
+        jsoncParsed = JSON.parse(stripJsonComments(raw));
+      } catch {
+      }
+    }
+    const wanted = this.buildWantedTsconfig(jsoncParsed);
+    if (raw === void 0) {
+      await this.writeFreshTsConfig(tsconfigUri, wanted);
+      return;
+    }
+    if (strictParsed) {
+      const changed = mergeWantedIntoTsconfig(strictParsed, wanted);
+      if (changed) {
+        await vscode3.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(strictParsed, null, 2) + "\n"));
+        this.log(`Updated tsconfig.json with ${wanted.files.join(", ")}, "${NS_PATH_ALIAS}" path alias, and jsx mode`);
+      }
+      return;
+    }
+    if (jsoncParsed && tsconfigHasAllWanted(jsoncParsed, wanted)) {
+      return;
+    }
+    await this.warnManualTsConfigSetup(tsconfigUri, wanted, jsoncParsed === void 0);
+  }
+  // Compute the set of fields the extension wants present in the user's
+  // tsconfig. The result is sensitive to whether `existing` already has
+  // `compilerOptions.baseUrl` set: with baseUrl, `paths` entries resolve
+  // relative to baseUrl (old style) so `@ns` needs to climb back out to
+  // the workspace root; without baseUrl, entries resolve relative to the
+  // tsconfig directory (new style, the only style left in TS 7.0 where
+  // `baseUrl` is removed).
+  buildWantedTsconfig(existing) {
+    const co = existing?.["compilerOptions"];
+    const hasBaseUrl = !!co && typeof co === "object" && !Array.isArray(co) && typeof co["baseUrl"] === "string";
     const syncDir = this.config.syncDirectory;
-    const depth = syncDir ? syncDir.split("/").filter(Boolean).length : 0;
-    const toRoot = "../".repeat(depth);
-    const defaultPaths = {
-      [NS_PATH_ALIAS]: [toRoot + DEFINITIONS_FILE],
-      ["@/*"]: ["./*"]
-    };
+    let defaultPaths;
+    if (hasBaseUrl) {
+      const depth = syncDir ? syncDir.split("/").filter(Boolean).length : 0;
+      const toRoot = "../".repeat(depth);
+      defaultPaths = {
+        [NS_PATH_ALIAS]: [toRoot + DEFINITIONS_FILE],
+        ["@/*"]: ["./*"]
+      };
+    } else {
+      const syncRoot = syncDir ? `./${syncDir}/*` : "./*";
+      defaultPaths = {
+        [NS_PATH_ALIAS]: [DEFINITIONS_FILE],
+        ["@/*"]: [syncRoot]
+      };
+    }
     const ownedPaths = {};
     if (this.bundledTypesDir !== void 0) {
       const norm = this.bundledTypesDir.replace(/\\/g, "/");
       ownedPaths["react"] = [`${norm}/react`];
       ownedPaths["react-dom"] = [`${norm}/react-dom`];
     }
-    const wanted = {
+    return {
       files: [DEFINITIONS_FILE, GLOBALS_FILE],
       paths: defaultPaths,
       ownedPaths,
@@ -6425,52 +6482,30 @@ New files (not yet present locally) will be downloaded either way.`
       // see NetscriptGlobals.d.ts).
       compilerOptions: { jsx: "react" }
     };
-    let raw;
-    try {
-      const bytes = await vscode3.workspace.fs.readFile(tsconfigUri);
-      raw = Buffer.from(bytes).toString("utf8");
-    } catch {
-      const tsconfig = {
-        compilerOptions: {
-          target: "ES2022",
-          module: "ES2022",
-          moduleResolution: "node",
-          allowJs: true,
-          checkJs: true,
-          noEmit: true,
-          jsx: "react",
-          paths: { ...wanted.paths, ...wanted.ownedPaths },
-          baseUrl: syncDir || "."
-        },
-        include: ["**/*"],
-        files: wanted.files
-      };
-      await vscode3.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(tsconfig, null, 2) + "\n"));
-      this.log("Created tsconfig.json");
-      return;
-    }
-    let strictParsed;
-    try {
-      strictParsed = JSON.parse(raw);
-    } catch {
-    }
-    if (strictParsed) {
-      const changed = mergeWantedIntoTsconfig(strictParsed, wanted);
-      if (changed) {
-        await vscode3.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(strictParsed, null, 2) + "\n"));
-        this.log(`Updated tsconfig.json with ${wanted.files.join(", ")}, "${NS_PATH_ALIAS}" path alias, and jsx mode`);
-      }
-      return;
-    }
-    let jsoncParsed;
-    try {
-      jsoncParsed = JSON.parse(stripJsonComments(raw));
-    } catch {
-    }
-    if (jsoncParsed && tsconfigHasAllWanted(jsoncParsed, wanted)) {
-      return;
-    }
-    await this.warnManualTsConfigSetup(tsconfigUri, wanted, jsoncParsed === void 0);
+  }
+  async writeFreshTsConfig(tsconfigUri, wanted) {
+    const syncDir = this.config.syncDirectory;
+    const syncRoot = syncDir ? `./${syncDir}/*` : "./*";
+    const tsconfig = {
+      compilerOptions: {
+        target: "ES2022",
+        module: "ES2022",
+        moduleResolution: "bundler",
+        allowJs: true,
+        checkJs: true,
+        noEmit: true,
+        jsx: "react",
+        paths: {
+          ...wanted.paths,
+          "*": [syncRoot],
+          ...wanted.ownedPaths
+        }
+      },
+      include: ["**/*"],
+      files: wanted.files
+    };
+    await vscode3.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(tsconfig, null, 2) + "\n"));
+    this.log("Created tsconfig.json");
   }
   async warnManualTsConfigSetup(tsconfigUri, wanted, unparseable) {
     const reason = unparseable ? "tsconfig.json could not be parsed" : "tsconfig.json appears to contain comments or trailing commas (JSONC), which the extension will not rewrite";

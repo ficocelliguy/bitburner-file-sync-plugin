@@ -1285,11 +1285,31 @@ suite('SyncEngine', () => {
             assert.deepEqual(parsed.compilerOptions.paths, {
                 '@ns': ['NetscriptDefinitions.d.ts'],
                 '@/*': ['./*'],
+                // Replaces baseUrl: bare imports like `import "utils.js"`
+                // resolve against the user's script root.
+                '*': ['./*'],
             });
-            // baseUrl defaults to the workspace root when no syncDirectory is set.
-            assert.equal(parsed.compilerOptions.baseUrl, '.');
+            // `moduleResolution: "node"` and `baseUrl` were both deprecated
+            // in TS 5.x and removed in 7.0; we generate the modern
+            // equivalents instead.
+            assert.equal(parsed.compilerOptions.moduleResolution, 'bundler');
+            assert.equal(parsed.compilerOptions.baseUrl, undefined);
             // Matches Bitburner's runtime (classic React.createElement factory).
             assert.equal(parsed.compilerOptions.jsx, 'react');
+        });
+
+        test('creates a tsconfig.json with sync-directory-rooted paths when syncDirectory is set', async () => {
+            _setConfig('bitburnerSync', 'syncDirectory', 'src');
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
+            await engine.downloadDefinitions();
+            const parsed = JSON.parse(_readFile('/workspace/tsconfig.json')!);
+            // `@ns` is at the workspace root, not under syncDirectory.
+            assert.deepEqual(parsed.compilerOptions.paths['@ns'], ['NetscriptDefinitions.d.ts']);
+            // `@/*` and `*` both point at the sync root.
+            assert.deepEqual(parsed.compilerOptions.paths['@/*'], ['./src/*']);
+            assert.deepEqual(parsed.compilerOptions.paths['*'], ['./src/*']);
+            assert.equal(parsed.compilerOptions.baseUrl, undefined);
         });
 
         test('appends to an existing tsconfig.json files array and adds the @ns path alias and jsx mode', async () => {

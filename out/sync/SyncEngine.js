@@ -239,7 +239,7 @@ class SyncEngine {
         const value = this.memento?.get("bitburnerSync.downloadSelectedFilesSelection") ?? "**/*.js";
         const input = await vscode.window.showInputBox({
             title: "Specify files to download",
-            prompt: "for example, 'scripts/**' for all files under the scripts folder",
+            prompt: "for example, 'scripts/**' for all files under the scripts folder, or '**/*.json' for all json files",
             value,
         });
         if (!input) {
@@ -585,20 +585,94 @@ class SyncEngine {
     }
     async ensureTsConfig(rootUri) {
         const tsconfigUri = vscode.Uri.joinPath(rootUri, 'tsconfig.json');
-        // `baseUrl` is set to the sync directory so bare imports like
-        // `import "utils.js"` resolve against the user's script root. Because
-        // `paths` entries are themselves resolved relative to `baseUrl`, the
-        // `@ns` mapping has to climb back out to the workspace root where the
-        // d.ts actually lives.
+        let raw;
+        try {
+            const bytes = await vscode.workspace.fs.readFile(tsconfigUri);
+            raw = Buffer.from(bytes).toString('utf8');
+        }
+        catch {
+            // not yet — fall through to fresh-template path below.
+        }
+        // Try strict JSON first — only then is it safe to re-serialize.
+        let strictParsed;
+        if (raw !== undefined) {
+            try {
+                strictParsed = JSON.parse(raw);
+            }
+            catch {
+                // not strict JSON; may still be valid JSONC
+            }
+        }
+        // JSONC fallback for *detection only* — we won't rewrite it, since
+        // re-serializing would drop the user's comments and formatting.
+        let jsoncParsed = strictParsed;
+        if (jsoncParsed === undefined && raw !== undefined) {
+            try {
+                jsoncParsed = JSON.parse(stripJsonComments(raw));
+            }
+            catch {
+                // unparseable
+            }
+        }
+        const wanted = this.buildWantedTsconfig(jsoncParsed);
+        if (raw === undefined) {
+            // File doesn't exist — safe to create a fresh template.
+            await this.writeFreshTsConfig(tsconfigUri, wanted);
+            return;
+        }
+        if (strictParsed) {
+            const changed = mergeWantedIntoTsconfig(strictParsed, wanted);
+            if (changed) {
+                await vscode.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(strictParsed, null, 2) + '\n'));
+                this.log(`Updated tsconfig.json with ${wanted.files.join(', ')}, "${NS_PATH_ALIAS}" path alias, and jsx mode`);
+            }
+            return;
+        }
+        if (jsoncParsed && tsconfigHasAllWanted(jsoncParsed, wanted)) {
+            return;
+        }
+        // Either JSONC-missing-an-entry or unparseable. Don't risk corrupting
+        // the file; tell the user what to add.
+        await this.warnManualTsConfigSetup(tsconfigUri, wanted, jsoncParsed === undefined);
+    }
+    // Compute the set of fields the extension wants present in the user's
+    // tsconfig. The result is sensitive to whether `existing` already has
+    // `compilerOptions.baseUrl` set: with baseUrl, `paths` entries resolve
+    // relative to baseUrl (old style) so `@ns` needs to climb back out to
+    // the workspace root; without baseUrl, entries resolve relative to the
+    // tsconfig directory (new style, the only style left in TS 7.0 where
+    // `baseUrl` is removed).
+    buildWantedTsconfig(existing) {
+        const co = existing?.['compilerOptions'];
+        const hasBaseUrl = !!co
+            && typeof co === 'object'
+            && !Array.isArray(co)
+            && typeof co['baseUrl'] === 'string';
         const syncDir = this.config.syncDirectory;
-        const depth = syncDir ? syncDir.split('/').filter(Boolean).length : 0;
-        const toRoot = '../'.repeat(depth);
-        // `@ns` is add-if-missing so users who deliberately point it at a
-        // different file aren't overwritten.
-        const defaultPaths = {
-            [NS_PATH_ALIAS]: [toRoot + DEFINITIONS_FILE],
-            ["@/*"]: ["./*"],
-        };
+        // `@ns` and `@/*` are add-if-missing so users who deliberately
+        // point them at different files aren't overwritten.
+        let defaultPaths;
+        if (hasBaseUrl) {
+            // Old layout: paths resolve relative to baseUrl (which older
+            // extension versions and the bitburner-official template set
+            // to syncDirectory). Climb back out for the d.ts.
+            const depth = syncDir ? syncDir.split('/').filter(Boolean).length : 0;
+            const toRoot = '../'.repeat(depth);
+            defaultPaths = {
+                [NS_PATH_ALIAS]: [toRoot + DEFINITIONS_FILE],
+                ['@/*']: ['./*'],
+            };
+        }
+        else {
+            // New layout: paths resolve relative to the tsconfig directory
+            // (workspace root). The d.ts lives there, so reference it
+            // directly; `@/*` points at the sync root explicitly.
+            const syncRoot = syncDir ? `./${syncDir}/*` : './*';
+            defaultPaths = {
+                [NS_PATH_ALIAS]: [DEFINITIONS_FILE],
+                ['@/*']: [syncRoot],
+            };
+        }
         // `react` and `react-dom` are *owned*: their values are absolute
         // paths into the installed extension directory, which moves on
         // every extension upgrade. We always rewrite them to the current
@@ -616,7 +690,7 @@ class SyncEngine {
             ownedPaths['react'] = [`${norm}/react`];
             ownedPaths['react-dom'] = [`${norm}/react-dom`];
         }
-        const wanted = {
+        return {
             files: [DEFINITIONS_FILE, GLOBALS_FILE],
             paths: defaultPaths,
             ownedPaths,
@@ -627,64 +701,38 @@ class SyncEngine {
             // see NetscriptGlobals.d.ts).
             compilerOptions: { jsx: 'react' },
         };
-        let raw;
-        try {
-            const bytes = await vscode.workspace.fs.readFile(tsconfigUri);
-            raw = Buffer.from(bytes).toString('utf8');
-        }
-        catch {
-            // File doesn't exist — safe to create a fresh template.
-            const tsconfig = {
-                compilerOptions: {
-                    target: 'ES2022',
-                    module: 'ES2022',
-                    moduleResolution: 'node',
-                    allowJs: true,
-                    checkJs: true,
-                    noEmit: true,
-                    jsx: 'react',
-                    paths: { ...wanted.paths, ...wanted.ownedPaths },
-                    baseUrl: syncDir || ".",
+    }
+    async writeFreshTsConfig(tsconfigUri, wanted) {
+        const syncDir = this.config.syncDirectory;
+        // `moduleResolution: "bundler"` replaces the deprecated
+        // `moduleResolution: "node"` (renamed to `node10`, removed in
+        // TS 7.0) and matches how Bitburner-style imports work: file
+        // extensions in import paths are fine, no Node-style ESM
+        // strictness. The `"*"` paths entry replaces `baseUrl` (also
+        // removed in TS 7.0) — it makes bare imports like
+        // `import "utils.js"` resolve against the user's script root,
+        // matching how Bitburner treats `/utils.js` on `home`.
+        const syncRoot = syncDir ? `./${syncDir}/*` : './*';
+        const tsconfig = {
+            compilerOptions: {
+                target: 'ES2022',
+                module: 'ES2022',
+                moduleResolution: 'bundler',
+                allowJs: true,
+                checkJs: true,
+                noEmit: true,
+                jsx: 'react',
+                paths: {
+                    ...wanted.paths,
+                    '*': [syncRoot],
+                    ...wanted.ownedPaths,
                 },
-                include: ['**/*'],
-                files: wanted.files,
-            };
-            await vscode.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(tsconfig, null, 2) + '\n'));
-            this.log('Created tsconfig.json');
-            return;
-        }
-        // Try strict JSON first — only then is it safe to re-serialize.
-        let strictParsed;
-        try {
-            strictParsed = JSON.parse(raw);
-        }
-        catch {
-            // not strict JSON; may still be valid JSONC
-        }
-        if (strictParsed) {
-            const changed = mergeWantedIntoTsconfig(strictParsed, wanted);
-            if (changed) {
-                await vscode.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(strictParsed, null, 2) + '\n'));
-                this.log(`Updated tsconfig.json with ${wanted.files.join(', ')}, "${NS_PATH_ALIAS}" path alias, and jsx mode`);
-            }
-            return;
-        }
-        // Not strict JSON. Try to parse as JSONC (comments / trailing commas) for
-        // *detection only* — we won't rewrite it, since re-serializing would drop
-        // the user's comments and formatting.
-        let jsoncParsed;
-        try {
-            jsoncParsed = JSON.parse(stripJsonComments(raw));
-        }
-        catch {
-            // unparseable
-        }
-        if (jsoncParsed && tsconfigHasAllWanted(jsoncParsed, wanted)) {
-            return;
-        }
-        // Either JSONC-missing-an-entry or unparseable. Don't risk corrupting
-        // the file; tell the user what to add.
-        await this.warnManualTsConfigSetup(tsconfigUri, wanted, jsoncParsed === undefined);
+            },
+            include: ['**/*'],
+            files: wanted.files,
+        };
+        await vscode.workspace.fs.writeFile(tsconfigUri, Buffer.from(JSON.stringify(tsconfig, null, 2) + '\n'));
+        this.log('Created tsconfig.json');
     }
     async warnManualTsConfigSetup(tsconfigUri, wanted, unparseable) {
         const reason = unparseable
