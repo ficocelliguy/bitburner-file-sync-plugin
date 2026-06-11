@@ -760,9 +760,11 @@ export class SyncEngine {
         const syncRoot = syncDir ? `./${syncDir}/*` : './*';
         const tsconfig = {
             compilerOptions: {
-                target: 'ES2022',
-                module: 'ES2022',
+                noImplicitAny: false,
+                target: 'ESNext',
+                module: 'ESNext',
                 moduleResolution: 'bundler',
+                allowImportingTsExtensions: true,
                 allowJs: true,
                 checkJs: true,
                 noEmit: true,
