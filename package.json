@@ -4,7 +4,7 @@
   "description": "Sync local workspace files to Bitburner via the Remote File API",
   "repository": "https://github.com/ficocelliguy/bitburner-file-sync-plugin",
   "publisher": "FicocelliGuy",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "engines": {
     "vscode": "^1.118.0"
   },

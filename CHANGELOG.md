@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.0.9
+- Tweaked error UX to return to "off" state after a moment, rather than staying red forever
+- Added relative file location prefix to netscript definitions file in tsconfig
+
 ## 0.0.8
 - Added `Bitburner: Download Files Matching Pattern...` command, which prompts for a minimatch glob and pulls only files whose remote path matches
 - The last pattern used is remembered per-workspace and pre-fills the input box next time.
