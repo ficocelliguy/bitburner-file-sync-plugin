@@ -133,7 +133,11 @@ For compatibility with the [bitburner-official typescript template](https://gith
 The generated `tsconfig.json` makes imports between your scripts work the same way in VS Code as they do in Bitburner. Specifically, it sets:
 
 - **`moduleResolution`** to `"bundler"`. This matches how Bitburner-style imports work (file extensions in import paths are allowed, no Node-style ESM strictness) and avoids the legacy `"node"`/`"node10"` mode that TypeScript 7.0 removes.
-- **`paths["*"]`** to your `bitburnerSync.syncDirectory` (or the workspace root when no `syncDirectory` is set). Non-relative imports — e.g. `import { foo } from "utils.js"` from a script anywhere in the sync tree — resolve against this root, matching how Bitburner treats `/utils.js` on `home`. This replaces the older `baseUrl` setting (also removed in TS 7.0).
+- **`isolatedModules`** to `true`. Bitburner compiles each script individually at runtime, so this flags constructs that can't be transpiled in isolation (e.g. `const enum`) up front instead of at runtime.
+- **`esModuleInterop`** to `true`. Lets default-imports from CommonJS-flavored type definitions (e.g. the bundled `@types/react@^17`) work without `import * as` boilerplate.
+- **`skipLibCheck`** to `true`. Skips type checking of declaration files, which avoids spurious errors from third-party `.d.ts` files (including the bundled React types) and noticeably speeds up the TS server.
+- **`allowImportingTsExtensions`** to `true`. Allows imports that explicitly name `.ts` / `.tsx` files, which matches what some Bitburner workflows do.
+- **`paths["*"]` and `paths["/*"]`** to your `bitburnerSync.syncDirectory` (or the workspace root when no `syncDirectory` is set). The `"*"` entry handles bare imports — `import { foo } from "utils.js"` — and the `"/*"` entry handles Bitburner's absolute-from-home convention — `import { foo } from "/lib/utils.js"`. Together they replace the older `baseUrl` setting (also removed in TS 7.0).
 - **`paths["@ns"]`** to `NetscriptDefinitions.d.ts` at the workspace root, so `import { NS } from "@ns"` works from any script.
 - **`paths["@/*"]`** to the sync root, giving you an explicit absolute-to-sync-root alias: `import { foo } from "@/lib/utils"` works regardless of how deep the importing file lives.
 
@@ -156,17 +160,23 @@ To enable type hints, make sure `NetscriptDefinitions.d.ts` and `NetscriptGlobal
 ```jsonc
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ES2022",
+    "noImplicitAny": false,
+    "target": "ESNext",
+    "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
     "jsx": "react",
     "paths": {
       "@ns": ["NetscriptDefinitions.d.ts"],
       "@/*": ["./*"],
-      "*": ["./*"]
+      "*": ["./*"],
+      "/*": ["./*"]
     }
   },
   "include": ["**/*"],
@@ -174,13 +184,14 @@ To enable type hints, make sure `NetscriptDefinitions.d.ts` and `NetscriptGlobal
 }
 ```
 
-If `bitburnerSync.syncDirectory` is set (e.g. `"src"`), point `@/*` and `*` at it so bare and `@/`-prefixed imports resolve against your script root:
+If `bitburnerSync.syncDirectory` is set (e.g. `"src"`), point `@/*`, `*`, and `/*` at it so bare, `@/`-prefixed, and absolute-from-home imports all resolve against your script root:
 
 ```jsonc
 "paths": {
   "@ns": ["NetscriptDefinitions.d.ts"],
   "@/*": ["./src/*"],
-  "*": ["./src/*"]
+  "*": ["./src/*"],
+  "/*": ["./src/*"]
 }
 ```
 
@@ -206,7 +217,7 @@ After saving the file, reload the window (`Ctrl+Shift+P` → **Developer: Reload
 
 If VS Code red-squigglies an `import { foo } from "utils.js"` (or `"@/lib/utils"`, or `"@ns"`) even though the file exists and runs fine in Bitburner, the cause is almost always a mismatch between the tsconfig's `paths` and your `bitburnerSync.syncDirectory`. Run through this checklist in your `tsconfig.json`:
 
-1. **`paths["*"]` points at your `syncDirectory`.** If `bitburnerSync.syncDirectory` is `"src"`, set `"*": ["./src/*"]`. If `syncDirectory` is empty (workspace root), set `"*": ["./*"]`. Without this entry, bare imports like `import "utils.js"` have nowhere to look. (Older configs used `baseUrl` for the same purpose — that still works on TS 5.x but is removed in 7.0.)
+1. **`paths["*"]` and `paths["/*"]` point at your `syncDirectory`.** If `bitburnerSync.syncDirectory` is `"src"`, set both to `["./src/*"]`. If `syncDirectory` is empty (workspace root), set both to `["./*"]`. Without these entries, bare imports like `import "utils.js"` and absolute-from-home imports like `import "/lib/utils.js"` have nowhere to look. (Older configs used `baseUrl` for the bare-import case — that still works on TS 5.x but is removed in 7.0, and never handled the leading-slash form.)
 2. **`@ns` resolves to the workspace-root d.ts.** `NetscriptDefinitions.d.ts` and `NetscriptGlobals.d.ts` always live at the workspace root. Without `baseUrl`, paths are resolved relative to the tsconfig directory, so you can reference the d.ts directly: `"@ns": ["NetscriptDefinitions.d.ts"]` regardless of `syncDirectory`.
 3. **`@/*` points at your sync root.** Use the same target as `"*"`:
    - `syncDirectory: ""` → `"@/*": ["./*"]`

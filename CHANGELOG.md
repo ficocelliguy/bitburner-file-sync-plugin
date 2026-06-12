@@ -3,6 +3,7 @@
 ## 0.0.8
 - Added `Bitburner: Download Files Matching Pattern...` command, which prompts for a minimatch glob and pulls only files whose remote path matches
 - The last pattern used is remembered per-workspace and pre-fills the input box next time.
+- Improved generated tsconfig file in user workspace to better match Bitburner's
 
 ## 0.0.7
 - Added baseUrl based on the sync directory to .tsconfig, so `import x from "foo.js";` is handled relative to the script root, like in-game

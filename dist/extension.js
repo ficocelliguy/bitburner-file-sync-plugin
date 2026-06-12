@@ -5956,7 +5956,10 @@ var ALWAYS_EXCLUDE = [
   ".git/**",
   ".gitignore",
   ".vscode/**",
-  "node_modules/**"
+  "node_modules/**",
+  "tsconfig.json",
+  "package.json",
+  "package-lock.json"
 ];
 var DEFINITIONS_FILE = "NetscriptDefinitions.d.ts";
 var GLOBALS_FILE = "NetscriptGlobals.d.ts";
@@ -6488,16 +6491,22 @@ New files (not yet present locally) will be downloaded either way.`
     const syncRoot = syncDir ? `./${syncDir}/*` : "./*";
     const tsconfig = {
       compilerOptions: {
-        target: "ES2022",
-        module: "ES2022",
+        noImplicitAny: false,
+        target: "ESNext",
+        module: "ESNext",
         moduleResolution: "bundler",
+        allowImportingTsExtensions: true,
         allowJs: true,
         checkJs: true,
         noEmit: true,
+        skipLibCheck: true,
+        esModuleInterop: true,
+        isolatedModules: true,
         jsx: "react",
         paths: {
           ...wanted.paths,
           "*": [syncRoot],
+          "/*": [syncRoot],
           ...wanted.ownedPaths
         }
       },

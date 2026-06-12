@@ -1130,13 +1130,15 @@ suite('SyncEngine', () => {
             assert_1.strict.ok(raw, 'expected tsconfig.json to be written');
             const parsed = JSON.parse(raw);
             assert_1.strict.deepEqual(parsed.files, ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts']);
-            assert_1.strict.equal(parsed.compilerOptions.target, 'ES2022');
+            assert_1.strict.equal(parsed.compilerOptions.target, 'ESNext');
             assert_1.strict.deepEqual(parsed.compilerOptions.paths, {
                 '@ns': ['NetscriptDefinitions.d.ts'],
                 '@/*': ['./*'],
                 // Replaces baseUrl: bare imports like `import "utils.js"`
-                // resolve against the user's script root.
+                // and Bitburner's absolute-from-home imports like
+                // `import "/lib/utils.js"` resolve against the script root.
                 '*': ['./*'],
+                '/*': ['./*'],
             });
             // `moduleResolution: "node"` and `baseUrl` were both deprecated
             // in TS 5.x and removed in 7.0; we generate the modern
@@ -1154,9 +1156,10 @@ suite('SyncEngine', () => {
             const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
             // `@ns` is at the workspace root, not under syncDirectory.
             assert_1.strict.deepEqual(parsed.compilerOptions.paths['@ns'], ['NetscriptDefinitions.d.ts']);
-            // `@/*` and `*` both point at the sync root.
+            // `@/*`, `*`, and `/*` all point at the sync root.
             assert_1.strict.deepEqual(parsed.compilerOptions.paths['@/*'], ['./src/*']);
             assert_1.strict.deepEqual(parsed.compilerOptions.paths['*'], ['./src/*']);
+            assert_1.strict.deepEqual(parsed.compilerOptions.paths['/*'], ['./src/*']);
             assert_1.strict.equal(parsed.compilerOptions.baseUrl, undefined);
         });
         test('appends to an existing tsconfig.json files array and adds the @ns path alias and jsx mode', async () => {

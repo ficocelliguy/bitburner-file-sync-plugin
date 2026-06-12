@@ -708,23 +708,30 @@ class SyncEngine {
         // `moduleResolution: "node"` (renamed to `node10`, removed in
         // TS 7.0) and matches how Bitburner-style imports work: file
         // extensions in import paths are fine, no Node-style ESM
-        // strictness. The `"*"` paths entry replaces `baseUrl` (also
-        // removed in TS 7.0) — it makes bare imports like
-        // `import "utils.js"` resolve against the user's script root,
-        // matching how Bitburner treats `/utils.js` on `home`.
+        // strictness. The `"*"` and `"/*"` paths entries replace
+        // `baseUrl` (also removed in TS 7.0) — together they make both
+        // bare imports (`import "utils.js"`) and Bitburner's
+        // absolute-from-home convention (`import "/lib/utils.js"`)
+        // resolve against the user's script root.
         const syncRoot = syncDir ? `./${syncDir}/*` : './*';
         const tsconfig = {
             compilerOptions: {
-                target: 'ES2022',
-                module: 'ES2022',
+                noImplicitAny: false,
+                target: 'ESNext',
+                module: 'ESNext',
                 moduleResolution: 'bundler',
+                allowImportingTsExtensions: true,
                 allowJs: true,
                 checkJs: true,
                 noEmit: true,
+                skipLibCheck: true,
+                esModuleInterop: true,
+                isolatedModules: true,
                 jsx: 'react',
                 paths: {
                     ...wanted.paths,
                     '*': [syncRoot],
+                    '/*': [syncRoot],
                     ...wanted.ownedPaths,
                 },
             },
