@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.1.0
+- Renames and moves in VS Code now mirror to Bitburner
+- Deletes done in VS Code moves the deleted file in-game to `/trashbin/<original-path>` instead of being erased, so accidental deletes are recoverable from inside the game
+- Only user-initiated VS Code actions propagate; external changes (git branch switches, terminal `rm`, edits from other editors) are ignored
+
 ## 0.0.9
 - Tweaked error UX to return to "off" state after a moment, rather than staying red forever
 - Added relative file location prefix to netscript definitions file in tsconfig

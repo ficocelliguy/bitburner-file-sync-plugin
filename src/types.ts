@@ -35,6 +35,11 @@ export interface GetFileParams {
     server: string;
 }
 
+export interface DeleteFileParams {
+    filename: string;
+    server: string;
+}
+
 export interface GetFileNamesParams {
     server: string;
 }

@@ -567,6 +567,367 @@ suite('SyncEngine', () => {
         });
     });
 
+    suite('deleteRemoteFile', () => {
+        test('maps the path and calls api.deleteFile', async () => {
+            const { engine, rpc } = buildEngine();
+            await engine.deleteRemoteFile(Uri.file('/workspace/main.js'));
+            assert.equal(rpc.calls.length, 1);
+            assert.deepEqual(rpc.calls[0], {
+                method: 'deleteFile',
+                params: { filename: '/main.js', server: 'home' },
+            });
+        });
+
+        test('uses the configured target server', async () => {
+            _setConfig('bitburnerSync', 'targetServer', 'n00dles');
+            const { engine, rpc } = buildEngine();
+            await engine.deleteRemoteFile(Uri.file('/workspace/a.js'));
+            assert.equal((rpc.calls[0].params as { server: string }).server, 'n00dles');
+        });
+
+        test('strips the configured syncDirectory from the remote path', async () => {
+            _setConfig('bitburnerSync', 'syncDirectory', 'src');
+            const { engine, rpc } = buildEngine();
+            await engine.deleteRemoteFile(Uri.file('/workspace/src/main.js'));
+            assert.equal((rpc.calls[0].params as { filename: string }).filename, '/main.js');
+        });
+
+        test('shows an info notification when showNotifications is true', async () => {
+            const { engine } = buildEngine();
+            await engine.deleteRemoteFile(Uri.file('/workspace/a.js'));
+            const info = _state.notifications.filter(n => n.kind === 'info');
+            assert.equal(info.length, 1);
+            assert.match(info[0].message, /Deleted: \/a\.js/);
+        });
+
+        test('does not show a notification when showNotifications is false', async () => {
+            _setConfig('bitburnerSync', 'showNotifications', false);
+            const { engine } = buildEngine();
+            await engine.deleteRemoteFile(Uri.file('/workspace/a.js'));
+            assert.equal(_state.notifications.length, 0);
+        });
+
+        test('writes an entry to the output channel', async () => {
+            const { engine, output } = buildEngine();
+            await engine.deleteRemoteFile(Uri.file('/workspace/a.js'));
+            assert.match(output.lines[output.lines.length - 1], /Deleted: \/a\.js/);
+        });
+
+        test('does nothing (no RPC) when fileExtensions is explicitly []', async () => {
+            _setConfig('bitburnerSync', 'fileExtensions', []);
+            const { engine, rpc } = buildEngine();
+            await engine.deleteRemoteFile(Uri.file('/workspace/a.js'));
+            assert.equal(rpc.calls.length, 0);
+        });
+
+        test('skips files in the always-excluded baseline (no remote delete)', async () => {
+            const { engine, rpc, output } = buildEngine();
+            await engine.deleteRemoteFile(Uri.file('/workspace/NetscriptDefinitions.d.ts'));
+            assert.equal(rpc.calls.length, 0);
+            assert.ok(output.lines.some(l => /Excluded from delete-sync/.test(l)));
+        });
+
+        test('skips files whose extension is not configured', async () => {
+            const { engine, rpc } = buildEngine();
+            await engine.deleteRemoteFile(Uri.file('/workspace/notes.md'));
+            assert.equal(rpc.calls.length, 0);
+        });
+
+        test('rejects (throws) when the file is outside the configured syncDirectory', async () => {
+            _setConfig('bitburnerSync', 'syncDirectory', 'src');
+            const { engine } = buildEngine();
+            await assert.rejects(
+                engine.deleteRemoteFile(Uri.file('/workspace/outside.js')),
+                /outside the sync directory/
+            );
+        });
+    });
+
+    suite('moveToTrashbin', () => {
+        test('reads remote content, pushes to /trashbin/<path>, then deletes original', async () => {
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFile', 'original contents');
+            await engine.moveToTrashbin(Uri.file('/workspace/main.js'));
+            assert.equal(rpc.calls.length, 3);
+            assert.deepEqual(rpc.calls[0], {
+                method: 'getFile',
+                params: { filename: '/main.js', server: 'home' },
+            });
+            assert.deepEqual(rpc.calls[1], {
+                method: 'pushFile',
+                params: { filename: '/trashbin/main.js', content: 'original contents', server: 'home' },
+            });
+            assert.deepEqual(rpc.calls[2], {
+                method: 'deleteFile',
+                params: { filename: '/main.js', server: 'home' },
+            });
+        });
+
+        test('preserves nested original path under the trashbin prefix', async () => {
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFile', 'x');
+            await engine.moveToTrashbin(Uri.file('/workspace/scripts/lib/foo.js'));
+            assert.equal((rpc.calls[1].params as { filename: string }).filename, '/trashbin/scripts/lib/foo.js');
+        });
+
+        test('honors the configured targetServer for all three RPCs', async () => {
+            _setConfig('bitburnerSync', 'targetServer', 'n00dles');
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFile', 'x');
+            await engine.moveToTrashbin(Uri.file('/workspace/a.js'));
+            assert.equal(rpc.calls.length, 3);
+            for (const call of rpc.calls) {
+                assert.equal((call.params as { server: string }).server, 'n00dles');
+            }
+        });
+
+        test('strips the configured syncDirectory before deciding the trashbin target', async () => {
+            _setConfig('bitburnerSync', 'syncDirectory', 'src');
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFile', 'x');
+            await engine.moveToTrashbin(Uri.file('/workspace/src/main.js'));
+            assert.equal((rpc.calls[0].params as { filename: string }).filename, '/main.js');
+            assert.equal((rpc.calls[1].params as { filename: string }).filename, '/trashbin/main.js');
+            assert.equal((rpc.calls[2].params as { filename: string }).filename, '/main.js');
+        });
+
+        test('hard-deletes a file already inside /trashbin/ instead of nesting deeper', async () => {
+            const { engine, rpc } = buildEngine();
+            await engine.moveToTrashbin(Uri.file('/workspace/trashbin/main.js'));
+            assert.equal(rpc.calls.length, 1, 'should be a single deleteFile, not getFile/pushFile/deleteFile');
+            assert.deepEqual(rpc.calls[0], {
+                method: 'deleteFile',
+                params: { filename: '/trashbin/main.js', server: 'home' },
+            });
+        });
+
+        test('skips silently when the remote file does not exist (getFile fails)', async () => {
+            const { engine, rpc, output } = buildEngine();
+            rpc.queueError('getFile', new Error('file not found'));
+            await engine.moveToTrashbin(Uri.file('/workspace/main.js'));
+            // getFile fired, but no pushFile / deleteFile — nothing to move.
+            assert.equal(rpc.calls.length, 1);
+            assert.equal(rpc.calls[0].method, 'getFile');
+            assert.ok(output.lines.some(l => /Trashbin move skipped:.*not found/.test(l)));
+            // And no user-facing notification spam.
+            assert.equal(_state.notifications.filter(n => n.kind === 'error').length, 0);
+        });
+
+        test('does NOT delete the original when the trashbin push fails', async () => {
+            // Safety property: if we can't park a copy in the trashbin, we
+            // must not destroy the only remaining copy.
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFile', 'x');
+            rpc.queueError('pushFile', new Error('disk full'));
+            await assert.rejects(engine.moveToTrashbin(Uri.file('/workspace/main.js')), /disk full/);
+            const deleteCalls = rpc.calls.filter(c => c.method === 'deleteFile');
+            assert.equal(deleteCalls.length, 0, 'no deleteFile should run when pushFile failed');
+        });
+
+        test('writes an info notification when showNotifications is true', async () => {
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFile', 'x');
+            await engine.moveToTrashbin(Uri.file('/workspace/a.js'));
+            const info = _state.notifications.filter(n => n.kind === 'info');
+            assert.equal(info.length, 1);
+            assert.match(info[0].message, /Moved to trashbin: \/a\.js/);
+        });
+
+        test('does not show a notification when showNotifications is false', async () => {
+            _setConfig('bitburnerSync', 'showNotifications', false);
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFile', 'x');
+            await engine.moveToTrashbin(Uri.file('/workspace/a.js'));
+            assert.equal(_state.notifications.length, 0);
+        });
+
+        test('logs the move to the output channel', async () => {
+            const { engine, rpc, output } = buildEngine();
+            rpc.queueResponse('getFile', 'x');
+            await engine.moveToTrashbin(Uri.file('/workspace/a.js'));
+            assert.ok(output.lines.some(l => /Moved to trashbin: \/a\.js -> \/trashbin\/a\.js/.test(l)));
+        });
+
+        test('does nothing (no RPCs) when fileExtensions is explicitly []', async () => {
+            _setConfig('bitburnerSync', 'fileExtensions', []);
+            const { engine, rpc } = buildEngine();
+            await engine.moveToTrashbin(Uri.file('/workspace/a.js'));
+            assert.equal(rpc.calls.length, 0);
+        });
+
+        test('skips files in the always-excluded baseline', async () => {
+            const { engine, rpc, output } = buildEngine();
+            await engine.moveToTrashbin(Uri.file('/workspace/NetscriptDefinitions.d.ts'));
+            assert.equal(rpc.calls.length, 0);
+            assert.ok(output.lines.some(l => /Excluded from trashbin-move/.test(l)));
+        });
+
+        test('skips files whose extension is not configured', async () => {
+            const { engine, rpc } = buildEngine();
+            await engine.moveToTrashbin(Uri.file('/workspace/notes.md'));
+            assert.equal(rpc.calls.length, 0);
+        });
+
+        test('rejects (throws) when the file is outside the configured syncDirectory', async () => {
+            _setConfig('bitburnerSync', 'syncDirectory', 'src');
+            const { engine } = buildEngine();
+            await assert.rejects(
+                engine.moveToTrashbin(Uri.file('/workspace/outside.js')),
+                /outside the sync directory/
+            );
+        });
+    });
+
+    suite('handleFileDelete', () => {
+        test('does nothing when autoSync is disabled', async () => {
+            _setConfig('bitburnerSync', 'autoSync', false);
+            const { engine, rpc } = buildEngine();
+            engine.handleFileDelete(Uri.file('/workspace/a.js'));
+            await waitMs(10);
+            assert.equal(rpc.calls.length, 0);
+        });
+
+        test('moves the file to /trashbin/<path> instead of deleting outright', async () => {
+            const { engine, rpc } = buildEngine();
+            rpc.queueResponse('getFile', 'old content');
+            engine.handleFileDelete(Uri.file('/workspace/a.js'));
+            await waitMs(20);
+            const methods = rpc.calls.map(c => c.method);
+            assert.deepEqual(methods, ['getFile', 'pushFile', 'deleteFile']);
+            assert.equal((rpc.calls[1].params as { filename: string }).filename, '/trashbin/a.js');
+            assert.equal((rpc.calls[1].params as { content: string }).content, 'old content');
+            // Final delete clears the original location, not the trashbin one.
+            assert.equal((rpc.calls[2].params as { filename: string }).filename, '/a.js');
+        });
+
+        test('hard-deletes (no nested trashbin) when the deleted file already lives in /trashbin/', async () => {
+            const { engine, rpc } = buildEngine();
+            engine.handleFileDelete(Uri.file('/workspace/trashbin/a.js'));
+            await waitMs(20);
+            assert.deepEqual(rpc.calls.map(c => c.method), ['deleteFile']);
+            assert.equal((rpc.calls[0].params as { filename: string }).filename, '/trashbin/a.js');
+        });
+
+        test('logs (does not throw or notify) when an RPC in the move chain fails', async () => {
+            const { engine, rpc, output } = buildEngine();
+            rpc.queueResponse('getFile', 'x');
+            rpc.queueError('pushFile', new Error('boom'));
+            engine.handleFileDelete(Uri.file('/workspace/a.js'));
+            await waitMs(20);
+            const matches = output.lines.filter(l => /Auto-trashbin failed/.test(l));
+            assert.equal(matches.length, 1);
+            const errors = _state.notifications.filter(n => n.kind === 'error');
+            assert.equal(errors.length, 0);
+            // And the original was NOT deleted — the safety property still holds
+            // when triggered from the auto path.
+            assert.equal(rpc.calls.filter(c => c.method === 'deleteFile').length, 0);
+        });
+
+        test('cancels a pending debounced push for the same file', async () => {
+            const { engine, rpc } = buildEngine();
+            _writeFile('/workspace/a.js', 'x');
+            rpc.queueResponse('getFile', 'x');
+            // Queue a save…
+            engine.handleFileChange(Uri.file('/workspace/a.js'));
+            // …then delete before the 300 ms debounce window elapses.
+            engine.handleFileDelete(Uri.file('/workspace/a.js'));
+            await waitMs(400);
+            // No pushFile to /a.js — only the trashbin pushFile to /trashbin/a.js.
+            const pushedTargets = rpc.calls
+                .filter(c => c.method === 'pushFile')
+                .map(c => (c.params as { filename: string }).filename);
+            assert.deepEqual(pushedTargets, ['/trashbin/a.js'], 'pending save-push must be cancelled');
+        });
+    });
+
+    suite('handleFileRename', () => {
+        test('does nothing when autoSync is disabled', async () => {
+            _setConfig('bitburnerSync', 'autoSync', false);
+            const { engine, rpc } = buildEngine();
+            _writeFile('/workspace/b.js', 'new');
+            engine.handleFileRename(Uri.file('/workspace/a.js'), Uri.file('/workspace/b.js'));
+            await waitMs(10);
+            assert.equal(rpc.calls.length, 0);
+        });
+
+        test('deletes the old remote path and pushes the new file', async () => {
+            const { engine, rpc } = buildEngine();
+            _writeFile('/workspace/b.js', 'renamed content');
+            engine.handleFileRename(Uri.file('/workspace/a.js'), Uri.file('/workspace/b.js'));
+            await waitMs(20);
+            const methods = rpc.calls.map(c => c.method);
+            assert.deepEqual(methods, ['deleteFile', 'pushFile']);
+            assert.deepEqual(rpc.calls[0].params, { filename: '/a.js', server: 'home' });
+            assert.equal((rpc.calls[1].params as { filename: string }).filename, '/b.js');
+            assert.equal((rpc.calls[1].params as { content: string }).content, 'renamed content');
+        });
+
+        test('delete runs even when the push side has a disallowed extension', async () => {
+            // Rename a.js -> notes.md. The new path falls out of the syncable
+            // set, so the push side should no-op — but the delete must still
+            // fire so the in-game copy of a.js disappears.
+            const { engine, rpc } = buildEngine();
+            _writeFile('/workspace/notes.md', 'x');
+            engine.handleFileRename(Uri.file('/workspace/a.js'), Uri.file('/workspace/notes.md'));
+            await waitMs(20);
+            assert.deepEqual(rpc.calls.map(c => c.method), ['deleteFile']);
+        });
+
+        test('push runs even when the old path was outside the synced set', async () => {
+            // Rename notes.md -> a.js. The old path is not syncable (no remote
+            // file exists to delete) — the delete side becomes a no-op — but
+            // the push must still happen so the new a.js lands in-game.
+            const { engine, rpc } = buildEngine();
+            _writeFile('/workspace/a.js', 'fresh');
+            engine.handleFileRename(Uri.file('/workspace/notes.md'), Uri.file('/workspace/a.js'));
+            await waitMs(20);
+            assert.deepEqual(rpc.calls.map(c => c.method), ['pushFile']);
+            assert.equal((rpc.calls[0].params as { filename: string }).filename, '/a.js');
+        });
+
+        test('skips the push when the new file no longer exists', async () => {
+            // External race: the file moves *out* of disk between the rename
+            // event and the push attempt. The push should silently skip
+            // rather than logging a generic auto-sync failure.
+            const { engine, rpc, output } = buildEngine();
+            // Don't _writeFile the new path — fileExists returns false.
+            engine.handleFileRename(Uri.file('/workspace/a.js'), Uri.file('/workspace/b.js'));
+            await waitMs(20);
+            const methods = rpc.calls.map(c => c.method);
+            assert.deepEqual(methods, ['deleteFile']);
+            const failed = output.lines.filter(l => /Auto-sync \(rename\) failed/.test(l));
+            assert.equal(failed.length, 0);
+        });
+
+        test('logs both halves independently on RPC failure', async () => {
+            const { engine, rpc, output } = buildEngine();
+            _writeFile('/workspace/b.js', 'x');
+            rpc.queueError('deleteFile', new Error('delete-fail'));
+            rpc.queueError('pushFile', new Error('push-fail'));
+            engine.handleFileRename(Uri.file('/workspace/a.js'), Uri.file('/workspace/b.js'));
+            await waitMs(20);
+            assert.equal(output.lines.filter(l => /Auto-delete \(rename\) failed/.test(l)).length, 1);
+            assert.equal(output.lines.filter(l => /Auto-sync \(rename\) failed/.test(l)).length, 1);
+        });
+
+        test('cancels a pending debounced push for the old path', async () => {
+            const { engine, rpc } = buildEngine();
+            _writeFile('/workspace/a.js', 'old');
+            _writeFile('/workspace/b.js', 'new');
+            // Queue a save on a.js…
+            engine.handleFileChange(Uri.file('/workspace/a.js'));
+            // …then rename it before the debounce window fires.
+            engine.handleFileRename(Uri.file('/workspace/a.js'), Uri.file('/workspace/b.js'));
+            await waitMs(400);
+            // We expect exactly: deleteFile(/a.js), pushFile(/b.js) — and
+            // *not* the cancelled pushFile(/a.js).
+            assert.equal(rpc.calls.length, 2);
+            assert.equal(rpc.calls[0].method, 'deleteFile');
+            assert.equal(rpc.calls[1].method, 'pushFile');
+            assert.equal((rpc.calls[1].params as { filename: string }).filename, '/b.js');
+        });
+    });
+
     suite('downloadAll', () => {
         test('throws when no workspace folder is open', async () => {
             _state.workspaceFolders = undefined;
@@ -770,6 +1131,43 @@ suite('SyncEngine', () => {
             assert.equal(extSkips.length, 2, `expected two extension-skip log lines, got: ${JSON.stringify(extSkips)}`);
             const summary = output.lines.find(l => /Download complete/.test(l)) ?? '';
             assert.match(summary, /2 downloaded, 0 failed, 2 skipped/);
+        });
+
+        test('skips server files that live under /trashbin/ — they belong to the extension\'s delete bucket', async () => {
+            const { engine, rpc, output } = buildEngine();
+            rpc.queueResponse('getFileNames', [
+                '/main.js',
+                '/trashbin/old.js',
+                '/trashbin/lib/helpers.js',
+                // Listing variant without leading slash — the canonicalizer
+                // should normalize it so it's still recognized as in trashbin.
+                'trashbin/no-slash.js',
+            ]);
+            rpc.queueResponse('getFile', 'main');
+
+            await engine.downloadAll();
+
+            const fetched = rpc.calls.filter(c => c.method === 'getFile').map(c => (c.params as { filename: string }).filename);
+            assert.deepEqual(fetched, ['/main.js'], 'only the non-trashbin file should be downloaded');
+            assert.equal(_readFile('/workspace/main.js'), 'main');
+            assert.equal(_readFile('/workspace/trashbin/old.js'), undefined);
+            assert.equal(_readFile('/workspace/trashbin/lib/helpers.js'), undefined);
+            assert.equal(_readFile('/workspace/trashbin/no-slash.js'), undefined);
+
+            const trashbinSkips = output.lines.filter(l => /Skipped \(in \/trashbin\/\)/.test(l));
+            assert.equal(trashbinSkips.length, 3, `expected three trashbin-skip log lines, got: ${JSON.stringify(trashbinSkips)}`);
+            const summary = output.lines.find(l => /Download complete/.test(l)) ?? '';
+            assert.match(summary, /1 downloaded, 0 failed, 3 skipped/);
+        });
+
+        test('countNewRemoteFiles ignores /trashbin/ entries (no spurious first-connect download prompt)', async () => {
+            const { engine, rpc } = buildEngine();
+            // No local files written — every server file would be "new" if
+            // counted. /trashbin entries must be excluded so the user doesn't
+            // get prompted to download the very files they just deleted.
+            rpc.queueResponse('getFileNames', ['/trashbin/just-deleted.js', '/trashbin/lib/also-deleted.js']);
+            const count = await engine.countNewRemoteFiles();
+            assert.equal(count, 0);
         });
 
         test('user-configured fileExtensions narrows what gets downloaded', async () => {

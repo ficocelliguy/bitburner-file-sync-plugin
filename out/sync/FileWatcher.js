@@ -68,12 +68,17 @@ class FileWatcher {
         this.fileWatcher.onDidCreate((uri) => {
             this.syncEngine.handleFileChange(uri);
         }, null, this.disposables);
-        // Note: we intentionally do NOT subscribe to onDidDelete. Bitburner
-        // sync is one-way (local → remote) for pushes; deleting a file
-        // locally — whether intentional, a rename (which fires delete+create),
-        // a branch switch, or an external process — must not propagate to
-        // the game. Users who want a file gone on both sides delete it on
-        // both sides themselves.
+        // Intentionally NOT subscribing to FileSystemWatcher.onDidDelete:
+        // it fires for *every* filesystem-level delete, including renames
+        // (which fire delete+create on Windows), `git checkout` flipping
+        // branches, terminal `rm`s, and other-editor changes. None of those
+        // are signals the user wants the remote file gone.
+        //
+        // For user-initiated deletes/renames/moves done through VS Code
+        // itself, we use the higher-level workspace.onDidDeleteFiles and
+        // workspace.onDidRenameFiles events below. Those fire only for
+        // explicit user actions (right-click → Delete, drag-to-rename in
+        // the Explorer, F2-rename, etc.), so we can safely propagate them.
         // Also hook into save events for reliable detection
         const saveWatcher = vscode.workspace.onDidSaveTextDocument((doc) => {
             if (this.matchesExtensions(doc.uri) && this.isInSyncDirectory(doc.uri)) {
@@ -81,6 +86,31 @@ class FileWatcher {
             }
         });
         this.disposables.push(saveWatcher);
+        const deleteWatcher = vscode.workspace.onDidDeleteFiles((event) => {
+            for (const uri of event.files) {
+                if (this.matchesExtensions(uri) && this.isInSyncDirectory(uri)) {
+                    this.syncEngine.handleFileDelete(uri);
+                }
+            }
+        });
+        this.disposables.push(deleteWatcher);
+        const renameWatcher = vscode.workspace.onDidRenameFiles((event) => {
+            for (const { oldUri, newUri } of event.files) {
+                // Forward every rename whose old *or* new path lives in our
+                // syncable area. Either side might no-op inside SyncEngine
+                // (wrong extension, excluded, outside syncDirectory) — but
+                // we have to let the engine see both URIs so it can decide
+                // independently. Filtering on only the old path here would
+                // drop renames *into* the sync directory; filtering on only
+                // the new path would drop renames *out of* it.
+                const oldRelevant = this.matchesExtensions(oldUri) && this.isInSyncDirectory(oldUri);
+                const newRelevant = this.matchesExtensions(newUri) && this.isInSyncDirectory(newUri);
+                if (oldRelevant || newRelevant) {
+                    this.syncEngine.handleFileRename(oldUri, newUri);
+                }
+            }
+        });
+        this.disposables.push(renameWatcher);
     }
     isInSyncDirectory(uri) {
         // Save events fire for documents from any workspace folder. Filter

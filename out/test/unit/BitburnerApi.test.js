@@ -50,6 +50,27 @@ suite('BitburnerApi', () => {
             assert_1.strict.equal(rpc.calls[0].params.server, 'other');
         });
     });
+    suite('deleteFile', () => {
+        test('sends deleteFile with filename and default server', async () => {
+            rpc.queueResponse('deleteFile', 'OK');
+            const result = await api.deleteFile('/main.js');
+            assert_1.strict.equal(result, 'OK');
+            assert_1.strict.equal(rpc.calls.length, 1);
+            assert_1.strict.deepEqual(rpc.calls[0], {
+                method: 'deleteFile',
+                params: { filename: '/main.js', server: 'home' },
+            });
+        });
+        test('honors a server override when one is provided', async () => {
+            rpc.queueResponse('deleteFile', 'OK');
+            await api.deleteFile('/main.js', 'n00dles');
+            assert_1.strict.equal(rpc.calls[0].params.server, 'n00dles');
+        });
+        test('propagates errors from the RPC layer', async () => {
+            rpc.queueError('deleteFile', new Error('file not found'));
+            await assert_1.strict.rejects(api.deleteFile('/missing.js'), /file not found/);
+        });
+    });
     suite('getFileNames', () => {
         test('returns the array from the RPC layer', async () => {
             rpc.queueResponse('getFileNames', ['/a.js', '/b.js']);

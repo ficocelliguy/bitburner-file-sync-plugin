@@ -38,7 +38,7 @@ const vscodeMock = __importStar(require("./mocks/vscode"));
 const Configuration_1 = require("../../config/Configuration");
 const FileWatcher_1 = require("../../sync/FileWatcher");
 const helpers_1 = require("./helpers");
-const { Uri, RelativePattern, _reset, _state, _triggerSave, _setConfig, _setWorkspaceFolders } = vscodeMock;
+const { Uri, RelativePattern, _reset, _state, _triggerSave, _triggerDeleteFiles, _triggerRenameFiles, _setConfig, _setWorkspaceFolders, } = vscodeMock;
 function patternString(p) {
     return typeof p === 'string' ? p : p.pattern;
 }
@@ -48,11 +48,15 @@ function patternBase(p) {
 function buildEngine() {
     return {
         handleFileChange: new helpers_1.Spy(),
+        handleFileDelete: new helpers_1.Spy(),
+        handleFileRename: new helpers_1.Spy(),
     };
 }
 function asEngine(fake) {
     return {
         handleFileChange: fake.handleFileChange.fn,
+        handleFileDelete: fake.handleFileDelete.fn,
+        handleFileRename: fake.handleFileRename.fn,
     };
 }
 suite('FileWatcher', () => {
@@ -99,11 +103,141 @@ suite('FileWatcher', () => {
         assert_1.strict.equal(engine.handleFileChange.callCount, 1);
         watcher.dispose();
     });
-    test('does NOT subscribe to onDidDelete — local deletes never propagate to Bitburner', () => {
+    test('does NOT subscribe to the low-level FileSystemWatcher.onDidDelete', () => {
+        // FileSystemWatcher.onDidDelete fires for *every* filesystem-level
+        // delete (renames on Windows, branch switches, terminal `rm`,
+        // external editors). We propagate user-initiated deletes via the
+        // higher-level workspace.onDidDeleteFiles instead — see the next
+        // test. This assertion guards against an accidental regression.
         const engine = buildEngine();
         const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
         watcher.start();
-        assert_1.strict.equal(_state.fileWatchers[0].onDeleteListeners.length, 0, 'FileWatcher must not register a delete listener — sync is push-only');
+        assert_1.strict.equal(_state.fileWatchers[0].onDeleteListeners.length, 0, 'FileWatcher must not register a low-level delete listener — only the user-initiated workspace.onDidDeleteFiles');
+        watcher.dispose();
+    });
+    test('forwards workspace.onDidDeleteFiles to syncEngine.handleFileDelete', () => {
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        const uri = Uri.file('/workspace/gone.js');
+        _triggerDeleteFiles([uri]);
+        assert_1.strict.equal(engine.handleFileDelete.callCount, 1);
+        assert_1.strict.equal(engine.handleFileDelete.calls[0][0], uri);
+        watcher.dispose();
+    });
+    test('forwards each URI in a multi-file delete event independently', () => {
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        _triggerDeleteFiles([
+            Uri.file('/workspace/a.js'),
+            Uri.file('/workspace/b.js'),
+        ]);
+        assert_1.strict.equal(engine.handleFileDelete.callCount, 2);
+    });
+    test('ignores deleted files whose extension is not configured', () => {
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        _triggerDeleteFiles([Uri.file('/workspace/notes.md')]);
+        assert_1.strict.equal(engine.handleFileDelete.callCount, 0);
+        watcher.dispose();
+    });
+    test('ignores deleted files outside the syncDirectory', () => {
+        _setConfig('bitburnerSync', 'syncDirectory', 'src');
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        _triggerDeleteFiles([
+            Uri.file('/workspace/outside.js'),
+            Uri.file('/workspace/src/inside.js'),
+        ]);
+        assert_1.strict.equal(engine.handleFileDelete.callCount, 1);
+        assert_1.strict.equal(engine.handleFileDelete.calls[0][0].fsPath, '/workspace/src/inside.js');
+        watcher.dispose();
+    });
+    test('ignores deleted files in non-primary workspace folders', () => {
+        _setWorkspaceFolders(['/primary', '/secondary']);
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        _triggerDeleteFiles([Uri.file('/secondary/a.js')]);
+        assert_1.strict.equal(engine.handleFileDelete.callCount, 0);
+        watcher.dispose();
+    });
+    test('does not subscribe to workspace.onDidDeleteFiles when fileExtensions is explicitly []', () => {
+        _setConfig('bitburnerSync', 'fileExtensions', []);
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        assert_1.strict.equal(_state.onDeleteFilesListeners.length, 0);
+        // And a delete event fires nothing even if it slipped through.
+        _triggerDeleteFiles([Uri.file('/workspace/a.js')]);
+        assert_1.strict.equal(engine.handleFileDelete.callCount, 0);
+        watcher.dispose();
+    });
+    test('forwards workspace.onDidRenameFiles to syncEngine.handleFileRename', () => {
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        const oldUri = Uri.file('/workspace/a.js');
+        const newUri = Uri.file('/workspace/b.js');
+        _triggerRenameFiles([{ oldUri, newUri }]);
+        assert_1.strict.equal(engine.handleFileRename.callCount, 1);
+        assert_1.strict.equal(engine.handleFileRename.calls[0][0], oldUri);
+        assert_1.strict.equal(engine.handleFileRename.calls[0][1], newUri);
+        watcher.dispose();
+    });
+    test('forwards a rename whose old path leaves the synced area (delete-side only)', () => {
+        _setConfig('bitburnerSync', 'syncDirectory', 'src');
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        const oldUri = Uri.file('/workspace/src/a.js');
+        const newUri = Uri.file('/workspace/outside/a.js');
+        _triggerRenameFiles([{ oldUri, newUri }]);
+        assert_1.strict.equal(engine.handleFileRename.callCount, 1, 'old-path-in-sync renames must still forward');
+        watcher.dispose();
+    });
+    test('forwards a rename whose new path enters the synced area (push-side only)', () => {
+        _setConfig('bitburnerSync', 'syncDirectory', 'src');
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        const oldUri = Uri.file('/workspace/outside/a.js');
+        const newUri = Uri.file('/workspace/src/a.js');
+        _triggerRenameFiles([{ oldUri, newUri }]);
+        assert_1.strict.equal(engine.handleFileRename.callCount, 1, 'new-path-in-sync renames must still forward');
+        watcher.dispose();
+    });
+    test('ignores a rename whose endpoints both fall outside the synced area', () => {
+        _setConfig('bitburnerSync', 'syncDirectory', 'src');
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        const oldUri = Uri.file('/workspace/outside/a.js');
+        const newUri = Uri.file('/workspace/somewhere/b.js');
+        _triggerRenameFiles([{ oldUri, newUri }]);
+        assert_1.strict.equal(engine.handleFileRename.callCount, 0);
+        watcher.dispose();
+    });
+    test('ignores a rename whose endpoints both have disallowed extensions', () => {
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        _triggerRenameFiles([{
+                oldUri: Uri.file('/workspace/notes.md'),
+                newUri: Uri.file('/workspace/notes2.md'),
+            }]);
+        assert_1.strict.equal(engine.handleFileRename.callCount, 0);
+        watcher.dispose();
+    });
+    test('does not subscribe to workspace.onDidRenameFiles when fileExtensions is explicitly []', () => {
+        _setConfig('bitburnerSync', 'fileExtensions', []);
+        const engine = buildEngine();
+        const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
+        watcher.start();
+        assert_1.strict.equal(_state.onRenameFilesListeners.length, 0);
         watcher.dispose();
     });
     test('forwards onDidSaveTextDocument when the extension matches', () => {
@@ -202,15 +336,19 @@ suite('FileWatcher', () => {
         assert_1.strict.equal(engine.handleFileChange.callCount, 0);
         watcher.dispose();
     });
-    test('stop() disposes the watcher and removes the save listener', () => {
+    test('stop() disposes the watcher and removes the save/delete/rename listeners', () => {
         const engine = buildEngine();
         const watcher = new FileWatcher_1.FileWatcher(asEngine(engine), new Configuration_1.Configuration());
         watcher.start();
         assert_1.strict.equal(_state.onSaveListeners.length, 1);
+        assert_1.strict.equal(_state.onDeleteFilesListeners.length, 1);
+        assert_1.strict.equal(_state.onRenameFilesListeners.length, 1);
         const fileWatcher = _state.fileWatchers[0];
         watcher.stop();
         assert_1.strict.equal(fileWatcher.disposed, true);
         assert_1.strict.equal(_state.onSaveListeners.length, 0);
+        assert_1.strict.equal(_state.onDeleteFilesListeners.length, 0);
+        assert_1.strict.equal(_state.onRenameFilesListeners.length, 0);
     });
     test('start() after stop() creates a fresh watcher', () => {
         const engine = buildEngine();
@@ -228,6 +366,8 @@ suite('FileWatcher', () => {
         watcher.dispose();
         assert_1.strict.equal(_state.fileWatchers[0].disposed, true);
         assert_1.strict.equal(_state.onSaveListeners.length, 0);
+        assert_1.strict.equal(_state.onDeleteFilesListeners.length, 0);
+        assert_1.strict.equal(_state.onRenameFilesListeners.length, 0);
     });
 });
 //# sourceMappingURL=FileWatcher.test.js.map

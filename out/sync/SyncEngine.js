@@ -50,6 +50,9 @@ const ALWAYS_EXCLUDE = [
     '.gitignore',
     '.vscode/**',
     'node_modules/**',
+    'tsconfig.json',
+    'package.json',
+    'package-lock.json',
 ];
 // Files the extension writes into the workspace root to wire up editor
 // type hints. NetscriptDefinitions.d.ts is downloaded verbatim from the
@@ -81,6 +84,11 @@ const MAX_DEFINITIONS_SIZE_BYTES = 8 * 1024 * 1024;
 // it — the user can re-issue with a narrower fileExtensions filter, or look
 // at the output channel to see why the listing is unreasonable.
 const MAX_DOWNLOAD_FILE_COUNT = 5000;
+// In-game folder where deleted files are stashed instead of hard-deleted.
+// Hardcoded (not user-configurable) for now — keep the recovery story
+// predictable across workspaces. Always starts with '/'; PathMapper emits
+// leading slashes for remote paths, so the concat below is unambiguous.
+const TRASHBIN_PREFIX = '/trashbin';
 class SyncEngine {
     api;
     config;
@@ -231,6 +239,175 @@ class SyncEngine {
             }
         }, 300);
         this.debounceTimers.set(key, timer);
+    }
+    // Push-style counterpart to deleteFile: removes the file from the remote.
+    // Used by handleFileRename (the "old" side of a user-initiated VS Code
+    // rename/move) — renames are relocations, not destructive actions, so
+    // the moved file lives at the new path and the old path goes away. Plain
+    // VS Code deletes go through moveToTrashbin() instead, which is non-
+    // destructive and reversible. Mirrors pushFile's guard rails —
+    // fileExtensions opt-out, exclude rules, syncDirectory mapping — so a
+    // file we'd never push can never trigger a remote delete either. The
+    // matching extension check is intentional: a `.gitignore` deletion at the
+    // root must not turn into a `deleteFile("/.gitignore")` call.
+    async deleteRemoteFile(uri) {
+        if (this.config.fileExtensions.length === 0) {
+            return;
+        }
+        if (this.isExcluded(uri)) {
+            this.log(`Excluded from delete-sync: ${uri.fsPath}`);
+            return;
+        }
+        if (!this.matchesAllowedExtension(uri)) {
+            return;
+        }
+        const remotePath = this.pathMapper.mapToRemote(uri);
+        await this.api.deleteFile(remotePath, this.config.targetServer);
+        this.log(`Deleted: ${remotePath}`);
+        if (this.config.showNotifications) {
+            vscode.window.showInformationMessage(`Deleted: ${remotePath}`);
+        }
+    }
+    // Non-destructive counterpart to deleteRemoteFile: instead of dropping
+    // the in-game file, copy its content to `/trashbin/<original-path>` and
+    // then remove the original. The trashbin is a safety net — accidental
+    // VS Code deletes (an errant rm in a script, an unfortunate undo, etc.)
+    // are recoverable from inside Bitburner by inspecting `/trashbin/`.
+    //
+    // Three RPCs (getFile → pushFile → deleteFile) per move; renames don't
+    // use this path because they're already a "the file moved" operation,
+    // not a "the file is gone" one.
+    async moveToTrashbin(uri) {
+        if (this.config.fileExtensions.length === 0) {
+            return;
+        }
+        if (this.isExcluded(uri)) {
+            this.log(`Excluded from trashbin-move: ${uri.fsPath}`);
+            return;
+        }
+        if (!this.matchesAllowedExtension(uri)) {
+            return;
+        }
+        const remotePath = this.pathMapper.mapToRemote(uri);
+        const server = this.config.targetServer;
+        // Files that already live under /trashbin/ shouldn't nest deeper —
+        // a user emptying the trashbin from VS Code expects those files to
+        // actually go away. Hard-delete instead.
+        if (isInTrashbin(remotePath)) {
+            await this.api.deleteFile(remotePath, server);
+            this.log(`Deleted from trashbin: ${remotePath}`);
+            if (this.config.showNotifications) {
+                vscode.window.showInformationMessage(`Deleted from trashbin: ${remotePath}`);
+            }
+            return;
+        }
+        const trashbinPath = TRASHBIN_PREFIX + remotePath;
+        let content;
+        try {
+            content = await this.api.getFile(remotePath, server);
+        }
+        catch {
+            // File never made it to the game (never synced, deleted in-game
+            // already, etc.). Nothing to trash; nothing to clean up. Logged,
+            // not surfaced — this is a routine no-op for files outside the
+            // synced set or for deletes done before the first connect.
+            this.log(`Trashbin move skipped: ${remotePath} not found on ${server}`);
+            return;
+        }
+        // Push to trashbin first; only delete the original on success so a
+        // transient transport failure can't leave the user with no copy at
+        // either path.
+        await this.api.pushFile(trashbinPath, content, server);
+        await this.api.deleteFile(remotePath, server);
+        this.log(`Moved to trashbin: ${remotePath} -> ${trashbinPath}`);
+        if (this.config.showNotifications) {
+            vscode.window.showInformationMessage(`Moved to trashbin: ${remotePath}`);
+        }
+    }
+    // Forwarded from FileWatcher when VS Code reports a user-initiated delete.
+    // We deliberately use workspace.onDidDeleteFiles (not the lower-level
+    // FileSystemWatcher.onDidDelete) — the former only fires for explicit
+    // user actions inside VS Code, so git branch switches, terminal `rm`s
+    // and external editor deletes do *not* propagate to the game. Auto-sync
+    // gating mirrors handleFileChange so disabling autoSync disables both
+    // directions.
+    //
+    // The propagation is a *trashbin move*, not a hard delete: see
+    // moveToTrashbin() for the rationale.
+    handleFileDelete(uri) {
+        if (!this.config.autoSync) {
+            return;
+        }
+        // If the delete races with an in-flight debounced push for the same
+        // file, cancel the push — we don't want to upload content that the
+        // user has just decided is gone. The reverse case (push racing a
+        // delete) isn't a concern because the delete event handler runs
+        // synchronously here, before the debounce timer fires.
+        const key = uri.toString();
+        const existing = this.debounceTimers.get(key);
+        if (existing) {
+            clearTimeout(existing);
+            this.debounceTimers.delete(key);
+        }
+        this.moveToTrashbin(uri).catch((err) => {
+            this.log(`Auto-trashbin failed for ${uri.fsPath}: ${err}`);
+        });
+    }
+    // Forwarded from FileWatcher when VS Code reports a user-initiated
+    // rename or move (also user-initiated, same gating as handleFileDelete).
+    // A rename is modeled as delete-then-push: the old remote name goes
+    // away, the new file's content lands at the new remote path. Either
+    // side independently no-ops when it falls outside the syncable set
+    // (wrong extension, excluded, outside syncDirectory), so renaming
+    // *into* the synced area just pushes, renaming *out of* it just
+    // deletes, and a rename entirely outside is a silent no-op.
+    handleFileRename(oldUri, newUri) {
+        if (!this.config.autoSync) {
+            return;
+        }
+        const oldKey = oldUri.toString();
+        const pendingOld = this.debounceTimers.get(oldKey);
+        if (pendingOld) {
+            clearTimeout(pendingOld);
+            this.debounceTimers.delete(oldKey);
+        }
+        // Run delete-then-push sequentially: the new path may equal the old
+        // remote path (e.g. case-only rename on a case-insensitive filesystem
+        // — admittedly contrived, but cheap to be correct about), and we'd
+        // rather not race a delete against the push of the same target.
+        void (async () => {
+            try {
+                await this.deleteRemoteFile(oldUri);
+            }
+            catch (err) {
+                this.log(`Auto-delete (rename) failed for ${oldUri.fsPath}: ${err}`);
+            }
+            // pushFile itself doesn't filter by extension — that's the
+            // FileWatcher's job for save events, and the manual `syncFile`
+            // command bypasses it deliberately. FileWatcher only filters
+            // rename events at "old OR new is relevant", so we have to
+            // re-check the new side here before pushing: a rename like
+            // `a.js -> notes.md` must delete `/a.js` but NOT push notes.md.
+            if (!this.matchesAllowedExtension(newUri)) {
+                return;
+            }
+            try {
+                if (await this.fileExists(newUri)) {
+                    await this.pushFile(newUri);
+                }
+            }
+            catch (err) {
+                this.log(`Auto-sync (rename) failed for ${newUri.fsPath}: ${err}`);
+            }
+        })();
+    }
+    matchesAllowedExtension(uri) {
+        const lastDot = uri.fsPath.lastIndexOf('.');
+        if (lastDot < 0) {
+            return false;
+        }
+        const ext = uri.fsPath.slice(lastDot).toLowerCase();
+        return this.config.fileExtensions.includes(ext);
     }
     async downloadAll() {
         return this.downloadFiles();
@@ -422,6 +599,20 @@ class SyncEngine {
                 skipped++;
                 if (!silent) {
                     this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${filename}`);
+                }
+                continue;
+            }
+            // Never pull the in-game trashbin back into the workspace. The
+            // trashbin is the extension's own non-destructive delete bucket
+            // (see moveToTrashbin) — downloading it would resurrect the very
+            // files the user just deleted in VS Code, the next syncAll would
+            // push them back to /trashbin/<path> again, and the user ends up
+            // chasing the same files around. Counted as skipped so the
+            // download summary reflects what happened.
+            if (isInTrashbin(canonicalizeRemotePath(filename))) {
+                skipped++;
+                if (!silent) {
+                    this.log(`Skipped (in /trashbin/): ${filename}`);
                 }
                 continue;
             }
@@ -657,7 +848,7 @@ class SyncEngine {
             // extension versions and the bitburner-official template set
             // to syncDirectory). Climb back out for the d.ts.
             const depth = syncDir ? syncDir.split('/').filter(Boolean).length : 0;
-            const toRoot = '../'.repeat(depth);
+            const toRoot = '../'.repeat(depth) || "./";
             defaultPaths = {
                 [NS_PATH_ALIAS]: [toRoot + DEFINITIONS_FILE],
                 ['@/*']: ['./*'],
@@ -669,7 +860,7 @@ class SyncEngine {
             // directly; `@/*` points at the sync root explicitly.
             const syncRoot = syncDir ? `./${syncDir}/*` : './*';
             defaultPaths = {
-                [NS_PATH_ALIAS]: [DEFINITIONS_FILE],
+                [NS_PATH_ALIAS]: ["./" + DEFINITIONS_FILE],
                 ['@/*']: [syncRoot],
             };
         }
@@ -704,15 +895,6 @@ class SyncEngine {
     }
     async writeFreshTsConfig(tsconfigUri, wanted) {
         const syncDir = this.config.syncDirectory;
-        // `moduleResolution: "bundler"` replaces the deprecated
-        // `moduleResolution: "node"` (renamed to `node10`, removed in
-        // TS 7.0) and matches how Bitburner-style imports work: file
-        // extensions in import paths are fine, no Node-style ESM
-        // strictness. The `"*"` and `"/*"` paths entries replace
-        // `baseUrl` (also removed in TS 7.0) — together they make both
-        // bare imports (`import "utils.js"`) and Bitburner's
-        // absolute-from-home convention (`import "/lib/utils.js"`)
-        // resolve against the user's script root.
         const syncRoot = syncDir ? `./${syncDir}/*` : './*';
         const tsconfig = {
             compilerOptions: {
@@ -795,6 +977,12 @@ function formatBytes(bytes) {
 // does and sometimes doesn't.
 function canonicalizeRemotePath(p) {
     return p.startsWith('/') ? p : '/' + p;
+}
+// True when the remote path already lives inside `/trashbin/`. Used by
+// moveToTrashbin to short-circuit "delete a file in the trashbin" into a
+// real delete instead of nesting `/trashbin/trashbin/...`.
+function isInTrashbin(remotePath) {
+    return remotePath === TRASHBIN_PREFIX || remotePath.startsWith(TRASHBIN_PREFIX + '/');
 }
 // Returns true if `filename`'s extension (case-insensitive) is in the
 // `allowed` list. The list is expected to be normalized by Configuration:

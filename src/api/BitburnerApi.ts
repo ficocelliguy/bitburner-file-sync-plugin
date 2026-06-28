@@ -1,5 +1,5 @@
 import type { JsonRpcClient } from '../server/JsonRpcClient';
-import type { FileInfo, PushFileParams, GetFileParams, GetFileNamesParams } from '../types';
+import type { FileInfo, PushFileParams, GetFileParams, DeleteFileParams, GetFileNamesParams } from '../types';
 
 export class BitburnerApi {
     constructor(
@@ -22,6 +22,14 @@ export class BitburnerApi {
             server: server ?? this.defaultServer
         };
         return this.rpc.request<string>('getFile', params);
+    }
+
+    async deleteFile(filename: string, server?: string): Promise<string> {
+        const params: DeleteFileParams = {
+            filename,
+            server: server ?? this.defaultServer
+        };
+        return this.rpc.request<string>('deleteFile', params);
     }
 
     async getFileNames(server?: string): Promise<string[]> {

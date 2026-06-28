@@ -23,6 +23,13 @@ class BitburnerApi {
         };
         return this.rpc.request('getFile', params);
     }
+    async deleteFile(filename, server) {
+        const params = {
+            filename,
+            server: server ?? this.defaultServer
+        };
+        return this.rpc.request('deleteFile', params);
+    }
     async getFileNames(server) {
         const params = {
             server: server ?? this.defaultServer

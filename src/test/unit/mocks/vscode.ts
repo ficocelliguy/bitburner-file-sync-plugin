@@ -183,6 +183,14 @@ interface MockTextDocument {
     uri: Uri;
 }
 
+interface FileDeleteEvent {
+    files: readonly Uri[];
+}
+
+interface FileRenameEvent {
+    files: readonly { oldUri: Uri; newUri: Uri }[];
+}
+
 interface MockTextEditor {
     document: MockTextDocument;
 }
@@ -219,6 +227,8 @@ interface State {
     commands: Map<string, AnyFn>;
     activeTextEditor: MockTextEditor | undefined;
     onSaveListeners: Listener<MockTextDocument>[];
+    onDeleteFilesListeners: Listener<FileDeleteEvent>[];
+    onRenameFilesListeners: Listener<FileRenameEvent>[];
     onConfigChangeListeners: Listener<ConfigChangeEvent>[];
     statusBarItems: MockStatusBarItem[];
     outputChannels: MockOutputChannel[];
@@ -242,6 +252,8 @@ export const _state: State = {
     commands: new Map(),
     activeTextEditor: undefined,
     onSaveListeners: [],
+    onDeleteFilesListeners: [],
+    onRenameFilesListeners: [],
     onConfigChangeListeners: [],
     statusBarItems: [],
     outputChannels: [],
@@ -265,6 +277,8 @@ export function _reset(): void {
     _state.commands = new Map();
     _state.activeTextEditor = undefined;
     _state.onSaveListeners = [];
+    _state.onDeleteFilesListeners = [];
+    _state.onRenameFilesListeners = [];
     _state.onConfigChangeListeners = [];
     _state.statusBarItems = [];
     _state.outputChannels = [];
@@ -315,6 +329,20 @@ export function _readFile(fsPath: string): string | undefined {
 export function _triggerSave(uri: Uri): void {
     for (const listener of _state.onSaveListeners) {
         listener({ uri });
+    }
+}
+
+export function _triggerDeleteFiles(uris: Uri[]): void {
+    const event: FileDeleteEvent = { files: uris };
+    for (const listener of _state.onDeleteFilesListeners) {
+        listener(event);
+    }
+}
+
+export function _triggerRenameFiles(pairs: { oldUri: Uri; newUri: Uri }[]): void {
+    const event: FileRenameEvent = { files: pairs };
+    for (const listener of _state.onRenameFilesListeners) {
+        listener(event);
     }
 }
 
@@ -423,6 +451,24 @@ export const workspace = {
             const i = _state.onSaveListeners.indexOf(handler);
             if (i >= 0) {
                 _state.onSaveListeners.splice(i, 1);
+            }
+        });
+    },
+    onDidDeleteFiles(handler: Listener<FileDeleteEvent>): Disposable {
+        _state.onDeleteFilesListeners.push(handler);
+        return new Disposable(() => {
+            const i = _state.onDeleteFilesListeners.indexOf(handler);
+            if (i >= 0) {
+                _state.onDeleteFilesListeners.splice(i, 1);
+            }
+        });
+    },
+    onDidRenameFiles(handler: Listener<FileRenameEvent>): Disposable {
+        _state.onRenameFilesListeners.push(handler);
+        return new Disposable(() => {
+            const i = _state.onRenameFilesListeners.indexOf(handler);
+            if (i >= 0) {
+                _state.onRenameFilesListeners.splice(i, 1);
             }
         });
     },

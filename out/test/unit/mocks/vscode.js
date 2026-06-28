@@ -16,6 +16,8 @@ exports._setWorkspaceFolders = _setWorkspaceFolders;
 exports._writeFile = _writeFile;
 exports._readFile = _readFile;
 exports._triggerSave = _triggerSave;
+exports._triggerDeleteFiles = _triggerDeleteFiles;
+exports._triggerRenameFiles = _triggerRenameFiles;
 exports._triggerConfigChange = _triggerConfigChange;
 exports._makeMemento = _makeMemento;
 class Uri {
@@ -204,6 +206,8 @@ exports._state = {
     commands: new Map(),
     activeTextEditor: undefined,
     onSaveListeners: [],
+    onDeleteFilesListeners: [],
+    onRenameFilesListeners: [],
     onConfigChangeListeners: [],
     statusBarItems: [],
     outputChannels: [],
@@ -226,6 +230,8 @@ function _reset() {
     exports._state.commands = new Map();
     exports._state.activeTextEditor = undefined;
     exports._state.onSaveListeners = [];
+    exports._state.onDeleteFilesListeners = [];
+    exports._state.onRenameFilesListeners = [];
     exports._state.onConfigChangeListeners = [];
     exports._state.statusBarItems = [];
     exports._state.outputChannels = [];
@@ -268,6 +274,18 @@ function _readFile(fsPath) {
 function _triggerSave(uri) {
     for (const listener of exports._state.onSaveListeners) {
         listener({ uri });
+    }
+}
+function _triggerDeleteFiles(uris) {
+    const event = { files: uris };
+    for (const listener of exports._state.onDeleteFilesListeners) {
+        listener(event);
+    }
+}
+function _triggerRenameFiles(pairs) {
+    const event = { files: pairs };
+    for (const listener of exports._state.onRenameFilesListeners) {
+        listener(event);
     }
 }
 function _triggerConfigChange(affectedSection) {
@@ -361,6 +379,24 @@ exports.workspace = {
             const i = exports._state.onSaveListeners.indexOf(handler);
             if (i >= 0) {
                 exports._state.onSaveListeners.splice(i, 1);
+            }
+        });
+    },
+    onDidDeleteFiles(handler) {
+        exports._state.onDeleteFilesListeners.push(handler);
+        return new Disposable(() => {
+            const i = exports._state.onDeleteFilesListeners.indexOf(handler);
+            if (i >= 0) {
+                exports._state.onDeleteFilesListeners.splice(i, 1);
+            }
+        });
+    },
+    onDidRenameFiles(handler) {
+        exports._state.onRenameFilesListeners.push(handler);
+        return new Disposable(() => {
+            const i = exports._state.onRenameFilesListeners.indexOf(handler);
+            if (i >= 0) {
+                exports._state.onRenameFilesListeners.splice(i, 1);
             }
         });
     },

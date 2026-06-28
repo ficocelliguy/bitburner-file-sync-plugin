@@ -3989,6 +3989,13 @@ var BitburnerApi = class {
     };
     return this.rpc.request("getFile", params);
   }
+  async deleteFile(filename, server) {
+    const params = {
+      filename,
+      server: server ?? this.defaultServer
+    };
+    return this.rpc.request("deleteFile", params);
+  }
   async getFileNames(server) {
     const params = {
       server: server ?? this.defaultServer
@@ -5975,6 +5982,7 @@ var NS_PATH_ALIAS = "@ns";
 var MAX_FILE_SIZE_BYTES = 1024 * 1024;
 var MAX_DEFINITIONS_SIZE_BYTES = 8 * 1024 * 1024;
 var MAX_DOWNLOAD_FILE_COUNT = 5e3;
+var TRASHBIN_PREFIX = "/trashbin";
 var SyncEngine = class {
   constructor(api2, config2, outputChannel2, bundledTypesDir, memento) {
     this.api = api2;
@@ -6102,6 +6110,147 @@ var SyncEngine = class {
       }
     }, 300);
     this.debounceTimers.set(key, timer);
+  }
+  // Push-style counterpart to deleteFile: removes the file from the remote.
+  // Used by handleFileRename (the "old" side of a user-initiated VS Code
+  // rename/move) — renames are relocations, not destructive actions, so
+  // the moved file lives at the new path and the old path goes away. Plain
+  // VS Code deletes go through moveToTrashbin() instead, which is non-
+  // destructive and reversible. Mirrors pushFile's guard rails —
+  // fileExtensions opt-out, exclude rules, syncDirectory mapping — so a
+  // file we'd never push can never trigger a remote delete either. The
+  // matching extension check is intentional: a `.gitignore` deletion at the
+  // root must not turn into a `deleteFile("/.gitignore")` call.
+  async deleteRemoteFile(uri) {
+    if (this.config.fileExtensions.length === 0) {
+      return;
+    }
+    if (this.isExcluded(uri)) {
+      this.log(`Excluded from delete-sync: ${uri.fsPath}`);
+      return;
+    }
+    if (!this.matchesAllowedExtension(uri)) {
+      return;
+    }
+    const remotePath = this.pathMapper.mapToRemote(uri);
+    await this.api.deleteFile(remotePath, this.config.targetServer);
+    this.log(`Deleted: ${remotePath}`);
+    if (this.config.showNotifications) {
+      vscode3.window.showInformationMessage(`Deleted: ${remotePath}`);
+    }
+  }
+  // Non-destructive counterpart to deleteRemoteFile: instead of dropping
+  // the in-game file, copy its content to `/trashbin/<original-path>` and
+  // then remove the original. The trashbin is a safety net — accidental
+  // VS Code deletes (an errant rm in a script, an unfortunate undo, etc.)
+  // are recoverable from inside Bitburner by inspecting `/trashbin/`.
+  //
+  // Three RPCs (getFile → pushFile → deleteFile) per move; renames don't
+  // use this path because they're already a "the file moved" operation,
+  // not a "the file is gone" one.
+  async moveToTrashbin(uri) {
+    if (this.config.fileExtensions.length === 0) {
+      return;
+    }
+    if (this.isExcluded(uri)) {
+      this.log(`Excluded from trashbin-move: ${uri.fsPath}`);
+      return;
+    }
+    if (!this.matchesAllowedExtension(uri)) {
+      return;
+    }
+    const remotePath = this.pathMapper.mapToRemote(uri);
+    const server = this.config.targetServer;
+    if (isInTrashbin(remotePath)) {
+      await this.api.deleteFile(remotePath, server);
+      this.log(`Deleted from trashbin: ${remotePath}`);
+      if (this.config.showNotifications) {
+        vscode3.window.showInformationMessage(`Deleted from trashbin: ${remotePath}`);
+      }
+      return;
+    }
+    const trashbinPath = TRASHBIN_PREFIX + remotePath;
+    let content;
+    try {
+      content = await this.api.getFile(remotePath, server);
+    } catch {
+      this.log(`Trashbin move skipped: ${remotePath} not found on ${server}`);
+      return;
+    }
+    await this.api.pushFile(trashbinPath, content, server);
+    await this.api.deleteFile(remotePath, server);
+    this.log(`Moved to trashbin: ${remotePath} -> ${trashbinPath}`);
+    if (this.config.showNotifications) {
+      vscode3.window.showInformationMessage(`Moved to trashbin: ${remotePath}`);
+    }
+  }
+  // Forwarded from FileWatcher when VS Code reports a user-initiated delete.
+  // We deliberately use workspace.onDidDeleteFiles (not the lower-level
+  // FileSystemWatcher.onDidDelete) — the former only fires for explicit
+  // user actions inside VS Code, so git branch switches, terminal `rm`s
+  // and external editor deletes do *not* propagate to the game. Auto-sync
+  // gating mirrors handleFileChange so disabling autoSync disables both
+  // directions.
+  //
+  // The propagation is a *trashbin move*, not a hard delete: see
+  // moveToTrashbin() for the rationale.
+  handleFileDelete(uri) {
+    if (!this.config.autoSync) {
+      return;
+    }
+    const key = uri.toString();
+    const existing = this.debounceTimers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+      this.debounceTimers.delete(key);
+    }
+    this.moveToTrashbin(uri).catch((err) => {
+      this.log(`Auto-trashbin failed for ${uri.fsPath}: ${err}`);
+    });
+  }
+  // Forwarded from FileWatcher when VS Code reports a user-initiated
+  // rename or move (also user-initiated, same gating as handleFileDelete).
+  // A rename is modeled as delete-then-push: the old remote name goes
+  // away, the new file's content lands at the new remote path. Either
+  // side independently no-ops when it falls outside the syncable set
+  // (wrong extension, excluded, outside syncDirectory), so renaming
+  // *into* the synced area just pushes, renaming *out of* it just
+  // deletes, and a rename entirely outside is a silent no-op.
+  handleFileRename(oldUri, newUri) {
+    if (!this.config.autoSync) {
+      return;
+    }
+    const oldKey = oldUri.toString();
+    const pendingOld = this.debounceTimers.get(oldKey);
+    if (pendingOld) {
+      clearTimeout(pendingOld);
+      this.debounceTimers.delete(oldKey);
+    }
+    void (async () => {
+      try {
+        await this.deleteRemoteFile(oldUri);
+      } catch (err) {
+        this.log(`Auto-delete (rename) failed for ${oldUri.fsPath}: ${err}`);
+      }
+      if (!this.matchesAllowedExtension(newUri)) {
+        return;
+      }
+      try {
+        if (await this.fileExists(newUri)) {
+          await this.pushFile(newUri);
+        }
+      } catch (err) {
+        this.log(`Auto-sync (rename) failed for ${newUri.fsPath}: ${err}`);
+      }
+    })();
+  }
+  matchesAllowedExtension(uri) {
+    const lastDot = uri.fsPath.lastIndexOf(".");
+    if (lastDot < 0) {
+      return false;
+    }
+    const ext2 = uri.fsPath.slice(lastDot).toLowerCase();
+    return this.config.fileExtensions.includes(ext2);
   }
   async downloadAll() {
     return this.downloadFiles();
@@ -6274,6 +6423,13 @@ var SyncEngine = class {
         skipped++;
         if (!silent) {
           this.log(`Skipped (extension not in bitburnerSync.fileExtensions): ${filename}`);
+        }
+        continue;
+      }
+      if (isInTrashbin(canonicalizeRemotePath(filename))) {
+        skipped++;
+        if (!silent) {
+          this.log(`Skipped (in /trashbin/): ${filename}`);
         }
         continue;
       }
@@ -6568,6 +6724,9 @@ function formatBytes(bytes) {
 function canonicalizeRemotePath(p) {
   return p.startsWith("/") ? p : "/" + p;
 }
+function isInTrashbin(remotePath) {
+  return remotePath === TRASHBIN_PREFIX || remotePath.startsWith(TRASHBIN_PREFIX + "/");
+}
 function matchesAllowedExtension(filename, allowed) {
   const lastDot = filename.lastIndexOf(".");
   if (lastDot < 0) {
@@ -6815,6 +6974,24 @@ var FileWatcher = class {
       }
     });
     this.disposables.push(saveWatcher);
+    const deleteWatcher = vscode4.workspace.onDidDeleteFiles((event) => {
+      for (const uri of event.files) {
+        if (this.matchesExtensions(uri) && this.isInSyncDirectory(uri)) {
+          this.syncEngine.handleFileDelete(uri);
+        }
+      }
+    });
+    this.disposables.push(deleteWatcher);
+    const renameWatcher = vscode4.workspace.onDidRenameFiles((event) => {
+      for (const { oldUri, newUri } of event.files) {
+        const oldRelevant = this.matchesExtensions(oldUri) && this.isInSyncDirectory(oldUri);
+        const newRelevant = this.matchesExtensions(newUri) && this.isInSyncDirectory(newUri);
+        if (oldRelevant || newRelevant) {
+          this.syncEngine.handleFileRename(oldUri, newUri);
+        }
+      }
+    });
+    this.disposables.push(renameWatcher);
   }
   isInSyncDirectory(uri) {
     const primary = vscode4.workspace.workspaceFolders?.[0];

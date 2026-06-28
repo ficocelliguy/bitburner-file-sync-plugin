@@ -185,6 +185,15 @@ class WebSocketServer extends events_1.EventEmitter {
     setState(state) {
         this._state = state;
         this.emit('stateChanged', state);
+        // Reset state after 2 seconds if error occurs
+        if (this._state === "error") {
+            setTimeout(() => {
+                if (this._state === 'error') {
+                    this.setState('stopped');
+                    this.emit('stateChanged', 'stopped');
+                }
+            }, 4000);
+        }
     }
 }
 exports.WebSocketServer = WebSocketServer;
