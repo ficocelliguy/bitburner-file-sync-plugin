@@ -51,9 +51,13 @@ suite('RamStatusBar', () => {
     });
     test('shows total + label when entries arrive', () => {
         const bar = new RamStatusBar_1.RamStatusBar();
+        // computeScriptRamCost always appends a "Script base cost" line for
+        // the 1.6 GB launch overhead, so real callers hand that entry down
+        // to the status bar too. Mirror that here.
         bar.update([
             { name: 'hack', cost: 0.1 },
             { name: 'grow', cost: 0.15 },
+            { name: 'Script base cost', cost: 1.6 },
         ]);
         const item = _state.statusBarItems[0];
         assert_1.strict.equal(item.shown, true);
@@ -73,11 +77,14 @@ suite('RamStatusBar', () => {
         bar.update([
             { name: 'weaken', cost: 0.15 },
             { name: 'hack', cost: 0.1 },
+            { name: 'Script base cost', cost: 1.6 },
         ]);
         await (0, RamStatusBar_1.showRamCostBreakdown)(bar);
         assert_1.strict.equal(_state.quickPickCalls.length, 1);
         const call = _state.quickPickCalls[0];
-        assert_1.strict.deepEqual(call.items.map(i => i.label), ['weaken', 'hack']);
+        // The base-cost line surfaces in the picker too, at the bottom
+        // where computeScriptRamCost places it.
+        assert_1.strict.deepEqual(call.items.map(i => i.label), ['weaken', 'hack', 'Script base cost']);
         const opts = call.options;
         assert_1.strict.match(opts.title ?? '', /Estimated RAM cost: 1.85 GB/);
         bar.dispose();

@@ -3,9 +3,7 @@
 //
 // This is a deliberately lightweight approximation of what Bitburner does
 // internally (see bitburner-src/src/Script/RamCalculations.ts, which walks a
-// full AST). The extension only needs a rough, fast number for the status
-// bar — the user has already accepted that false positives are OK, so we
-// scan text tokens instead of parsing.
+// full AST). The extension only needs a rough, fast number for the status bar.
 //
 // The cost table is derived from JSDoc `@remarks RAM cost: X GB` markers in
 // NetscriptDefinitions.d.ts, which the extension already downloads. This
@@ -82,9 +80,7 @@ function parseRamCosts(source) {
 // Deliberately simple: any word token matching a known ns method name counts
 // once, with its highest known RAM cost. This overcounts (a local `write`
 // variable, a `hack` in a string comment) — the game's own AST-based
-// calculator has similar coarse behavior when identifiers alias ns names,
-// and the user has flagged false positives as acceptable in exchange for
-// keeping this cheap.
+// calculator has similar coarse behavior when identifiers alias ns names
 function computeScriptRamCost(source, costs) {
     if (costs.size === 0) {
         return { total: 0, entries: [] };
@@ -102,10 +98,6 @@ function computeScriptRamCost(source, costs) {
             found.set(name, spec);
         }
     }
-    // Rank by cost desc so the first-seen member of a shared bucket carries
-    // the bill (rather than an arbitrary one, which would be non-deterministic
-    // if the two members had different per-identifier costs later). Alphabetical
-    // tiebreak keeps the modal list stable.
     const ranked = Array.from(found, ([name, spec]) => ({ name, ...spec }))
         .sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name));
     const paidBuckets = new Set();

@@ -132,17 +132,26 @@ export async function main(ns) {
 }`;
         const result = computeScriptRamCost(src, costs);
         assert.equal(result.total, 0.1 + 0.15);
-        assert.deepEqual(result.entries.map(e => e.name).sort(), ['grow', 'hack']);
+        // The results always include a "Script base cost" line so the user
+        // sees the 1.6 GB launch overhead alongside the ns-method costs.
+        assert.deepEqual(
+            result.entries.map(e => e.name).sort(),
+            ['Script base cost', 'grow', 'hack'],
+        );
     });
 
     test('sorts entries highest cost first, alphabetical as tiebreaker', () => {
         const src = 'ns.hack(); ns.grow(); ns.weaken(); ns.scan();';
         const result = computeScriptRamCost(src, costs);
+        // Ns-method entries come out sorted; the "Script base cost" line is
+        // appended last regardless of its numeric cost, so it consistently
+        // sits at the bottom of the breakdown.
         assert.deepEqual(result.entries, [
             { name: 'scan', cost: 0.2 },
             { name: 'grow', cost: 0.15 },
             { name: 'weaken', cost: 0.15 },
             { name: 'hack', cost: 0.1 },
+            { name: 'Script base cost', cost: 1.6 },
         ]);
     });
 
@@ -151,7 +160,10 @@ export async function main(ns) {
         // status bar so the user sees "RAM: 0 GB" rather than a hidden item.
         const result = computeScriptRamCost('ns.write("a")', costs);
         assert.equal(result.total, 0);
-        assert.deepEqual(result.entries, [{ name: 'write', cost: 0 }]);
+        assert.deepEqual(result.entries, [
+            { name: 'write', cost: 0 },
+            { name: 'Script base cost', cost: 1.6 },
+        ]);
     });
 
     test('detects identifiers without knowing the enclosing namespace', () => {
@@ -159,7 +171,10 @@ export async function main(ns) {
         // still counts. Documented as a "false positives OK" tradeoff.
         const src = 'const hack = 1; console.log(hack);';
         const result = computeScriptRamCost(src, costs);
-        assert.deepEqual(result.entries, [{ name: 'hack', cost: 0.1 }]);
+        assert.deepEqual(result.entries, [
+            { name: 'hack', cost: 0.1 },
+            { name: 'Script base cost', cost: 1.6 },
+        ]);
     });
 
     test('bills a shared bucket once when multiple members are present', () => {
@@ -172,11 +187,14 @@ export async function main(ns) {
         ]);
         const result = computeScriptRamCost('document.title; window.location;', domCosts);
         assert.equal(result.total, 25);
+        // Filter the base-cost line out — this test is about DOM-bucket
+        // behavior, not the always-present launch overhead line.
+        const dom = result.entries.filter(e => e.name !== 'Script base cost');
         assert.deepEqual(
-            result.entries.map(e => e.name).sort(),
+            dom.map(e => e.name).sort(),
             ['document', 'window'],
         );
-        const billed = result.entries.filter(e => e.cost > 0);
+        const billed = dom.filter(e => e.cost > 0);
         assert.equal(billed.length, 1);
         assert.equal(billed[0].cost, 25);
     });
@@ -190,7 +208,10 @@ export async function main(ns) {
         ]);
         const result = computeScriptRamCost('window.alert("hi");', domCosts);
         assert.equal(result.total, 25);
-        assert.deepEqual(result.entries, [{ name: 'window', cost: 25 }]);
+        assert.deepEqual(result.entries, [
+            { name: 'window', cost: 25 },
+            { name: 'Script base cost', cost: 1.6 },
+        ]);
     });
 });
 

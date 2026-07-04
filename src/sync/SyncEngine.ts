@@ -883,7 +883,7 @@ export class SyncEngine {
             // extension versions and the bitburner-official template set
             // to syncDirectory). Climb back out for the d.ts.
             const depth = syncDir ? syncDir.split('/').filter(Boolean).length : 0;
-            const toRoot = '../'.repeat(depth) || "./";
+            const toRoot = '../'.repeat(depth);
             defaultPaths = {
                 [NS_PATH_ALIAS]: [toRoot + DEFINITIONS_FILE],
                 ['@/*']: ['./*'],
@@ -894,7 +894,7 @@ export class SyncEngine {
             // directly; `@/*` points at the sync root explicitly.
             const syncRoot = syncDir ? `./${syncDir}/*` : './*';
             defaultPaths = {
-                [NS_PATH_ALIAS]: ["./" + DEFINITIONS_FILE],
+                [NS_PATH_ALIAS]: [DEFINITIONS_FILE],
                 ['@/*']: [syncRoot],
             };
         }
