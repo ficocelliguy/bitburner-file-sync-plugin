@@ -48,12 +48,20 @@
       {
         "command": "bitburnerSync.toggleServer",
         "title": "Bitburner: Toggle Sync Server"
+      },
+      {
+        "command": "bitburnerSync.showRamCostBreakdown",
+        "title": "Bitburner: Show RAM Cost Breakdown"
       }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "bitburnerSync.toggleServer",
+          "when": "false"
+        },
+        {
+          "command": "bitburnerSync.showRamCostBreakdown",
           "when": "false"
         }
       ]

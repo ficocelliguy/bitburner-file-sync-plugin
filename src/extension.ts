@@ -7,6 +7,8 @@ import { Configuration } from './config/Configuration';
 import { SyncEngine } from './sync/SyncEngine';
 import { FileWatcher } from './sync/FileWatcher';
 import { StatusBar } from './ui/StatusBar';
+import { RamStatusBar, SHOW_BREAKDOWN_COMMAND, showRamCostBreakdown } from './ui/RamStatusBar';
+import { RamCostTracker } from './ram/RamCostTracker';
 
 let wsServer: WebSocketServer;
 let rpcClient: JsonRpcClient;
@@ -15,6 +17,8 @@ let config: Configuration;
 let syncEngine: SyncEngine;
 let fileWatcher: FileWatcher;
 let statusBar: StatusBar;
+let ramStatusBar: RamStatusBar;
+let ramCostTracker: RamCostTracker;
 let outputChannel: vscode.OutputChannel;
 
 // Persistence keys. Names live here so the two callers (the read in
@@ -71,6 +75,8 @@ export function activate(context: vscode.ExtensionContext): void {
     syncEngine = new SyncEngine(api, config, outputChannel, bundledTypesDir, context.workspaceState);
     fileWatcher = new FileWatcher(syncEngine, config);
     statusBar = new StatusBar();
+    ramStatusBar = new RamStatusBar();
+    ramCostTracker = new RamCostTracker(outputChannel, (entries) => ramStatusBar.update(entries));
 
     wsServer.on('stateChanged', (state) => {
         statusBar.update(state);
@@ -176,8 +182,11 @@ export function activate(context: vscode.ExtensionContext): void {
                 vscode.window.showErrorMessage(`Failed to download files: ${err}`);
             }
         }),
+        vscode.commands.registerCommand(SHOW_BREAKDOWN_COMMAND, () => showRamCostBreakdown(ramStatusBar)),
         outputChannel,
         statusBar,
+        ramStatusBar,
+        { dispose: () => ramCostTracker.dispose() },
         { dispose: () => syncEngine.dispose() },
         { dispose: () => fileWatcher.dispose() },
         { dispose: () => rpcClient.dispose() },
@@ -225,6 +234,13 @@ export function activate(context: vscode.ExtensionContext): void {
     // without waiting for the user to reconnect to the game. Fire-and-forget;
     // failures are logged inside the call.
     void syncEngine.ensureTypeDefinitionsSetup();
+
+    // First read of the RAM cost table. If NetscriptDefinitions.d.ts is
+    // already in the workspace (existing user, or the migration path just
+    // wrote it), the status bar becomes useful immediately; otherwise the
+    // file-watcher inside the tracker will populate it after the first
+    // download.
+    void ramCostTracker.initialize();
 }
 
 async function maybeOpenSettingsOnFirstInstall(context: vscode.ExtensionContext): Promise<void> {

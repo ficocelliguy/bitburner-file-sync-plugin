@@ -44,6 +44,8 @@ const Configuration_1 = require("./config/Configuration");
 const SyncEngine_1 = require("./sync/SyncEngine");
 const FileWatcher_1 = require("./sync/FileWatcher");
 const StatusBar_1 = require("./ui/StatusBar");
+const RamStatusBar_1 = require("./ui/RamStatusBar");
+const RamCostTracker_1 = require("./ram/RamCostTracker");
 let wsServer;
 let rpcClient;
 let api;
@@ -51,6 +53,8 @@ let config;
 let syncEngine;
 let fileWatcher;
 let statusBar;
+let ramStatusBar;
+let ramCostTracker;
 let outputChannel;
 // Persistence keys. Names live here so the two callers (the read in
 // activate() and the write after running once) can't drift apart.
@@ -100,6 +104,8 @@ function activate(context) {
     syncEngine = new SyncEngine_1.SyncEngine(api, config, outputChannel, bundledTypesDir, context.workspaceState);
     fileWatcher = new FileWatcher_1.FileWatcher(syncEngine, config);
     statusBar = new StatusBar_1.StatusBar();
+    ramStatusBar = new RamStatusBar_1.RamStatusBar();
+    ramCostTracker = new RamCostTracker_1.RamCostTracker(outputChannel, (entries) => ramStatusBar.update(entries));
     wsServer.on('stateChanged', (state) => {
         statusBar.update(state);
     });
@@ -197,7 +203,7 @@ function activate(context) {
         catch (err) {
             vscode.window.showErrorMessage(`Failed to download files: ${err}`);
         }
-    }), outputChannel, statusBar, { dispose: () => syncEngine.dispose() }, { dispose: () => fileWatcher.dispose() }, { dispose: () => rpcClient.dispose() }, 
+    }), vscode.commands.registerCommand(RamStatusBar_1.SHOW_BREAKDOWN_COMMAND, () => (0, RamStatusBar_1.showRamCostBreakdown)(ramStatusBar)), outputChannel, statusBar, ramStatusBar, { dispose: () => ramCostTracker.dispose() }, { dispose: () => syncEngine.dispose() }, { dispose: () => fileWatcher.dispose() }, { dispose: () => rpcClient.dispose() }, 
     // Return the Promise so VS Code awaits port release on
     // reload/upgrade. Without this the next activation can race the
     // close callback and hit EADDRINUSE binding to the same port.
@@ -235,6 +241,12 @@ function activate(context) {
     // without waiting for the user to reconnect to the game. Fire-and-forget;
     // failures are logged inside the call.
     void syncEngine.ensureTypeDefinitionsSetup();
+    // First read of the RAM cost table. If NetscriptDefinitions.d.ts is
+    // already in the workspace (existing user, or the migration path just
+    // wrote it), the status bar becomes useful immediately; otherwise the
+    // file-watcher inside the tracker will populate it after the first
+    // download.
+    void ramCostTracker.initialize();
 }
 async function maybeOpenSettingsOnFirstInstall(context) {
     if (context.globalState.get(FIRST_INSTALL_KEY, false)) {

@@ -74,6 +74,7 @@ suite('extension activate()', () => {
             'bitburnerSync.getDefinitions',
             'bitburnerSync.downloadAll',
             'bitburnerSync.downloadSelectedFiles',
+            'bitburnerSync.showRamCostBreakdown',
         ];
         for (const name of expected) {
             assert_1.strict.ok(_state.commands.has(name), `expected command ${name} to be registered`);
@@ -84,7 +85,12 @@ suite('extension activate()', () => {
         const ctx = makeContext();
         (0, extension_1.activate)(ctx);
         assert_1.strict.equal(_state.outputChannels[0].name, 'Bitburner Sync');
-        assert_1.strict.equal(_state.statusBarItems.length, 1);
+        // Two items on the left group: the primary connect/stop toggle and
+        // the RAM cost indicator next to it. Order is deterministic —
+        // primary first because it's constructed first in activate().
+        assert_1.strict.equal(_state.statusBarItems.length, 2);
+        assert_1.strict.equal(_state.statusBarItems[0].command, 'bitburnerSync.toggleServer');
+        assert_1.strict.equal(_state.statusBarItems[1].command, 'bitburnerSync.showRamCostBreakdown');
         disposeAll(ctx);
     });
     test('syncFile command warns when there is no active editor', async () => {

@@ -16,6 +16,8 @@ exports._setWorkspaceFolders = _setWorkspaceFolders;
 exports._writeFile = _writeFile;
 exports._readFile = _readFile;
 exports._triggerSave = _triggerSave;
+exports._setActiveEditor = _setActiveEditor;
+exports._queueQuickPickResponse = _queueQuickPickResponse;
 exports._triggerDeleteFiles = _triggerDeleteFiles;
 exports._triggerRenameFiles = _triggerRenameFiles;
 exports._triggerConfigChange = _triggerConfigChange;
@@ -205,7 +207,10 @@ exports._state = {
     notifications: [],
     commands: new Map(),
     activeTextEditor: undefined,
+    onActiveEditorListeners: [],
     onSaveListeners: [],
+    quickPickCalls: [],
+    quickPickResponseQueue: [],
     onDeleteFilesListeners: [],
     onRenameFilesListeners: [],
     onConfigChangeListeners: [],
@@ -229,7 +234,10 @@ function _reset() {
     exports._state.notifications = [];
     exports._state.commands = new Map();
     exports._state.activeTextEditor = undefined;
+    exports._state.onActiveEditorListeners = [];
     exports._state.onSaveListeners = [];
+    exports._state.quickPickCalls = [];
+    exports._state.quickPickResponseQueue = [];
     exports._state.onDeleteFilesListeners = [];
     exports._state.onRenameFilesListeners = [];
     exports._state.onConfigChangeListeners = [];
@@ -271,10 +279,20 @@ function _readFile(fsPath) {
     const buf = exports._state.files.get(fsPath);
     return buf ? buf.toString() : undefined;
 }
-function _triggerSave(uri) {
+function _triggerSave(uri, text) {
+    const doc = text === undefined ? { uri } : { uri, getText: () => text };
     for (const listener of exports._state.onSaveListeners) {
-        listener({ uri });
+        listener(doc);
     }
+}
+function _setActiveEditor(editor) {
+    exports._state.activeTextEditor = editor;
+    for (const listener of exports._state.onActiveEditorListeners) {
+        listener(editor);
+    }
+}
+function _queueQuickPickResponse(value) {
+    exports._state.quickPickResponseQueue.push(value);
 }
 function _triggerDeleteFiles(uris) {
     const event = { files: uris };
@@ -438,6 +456,19 @@ exports.window = {
     showInputBox(options) {
         exports._state.inputBoxCalls.push({ options: options ?? {} });
         return Promise.resolve(exports._state.inputBoxResponseQueue.shift());
+    },
+    showQuickPick(items, options) {
+        exports._state.quickPickCalls.push({ items, options: options ?? {} });
+        return Promise.resolve(exports._state.quickPickResponseQueue.shift());
+    },
+    onDidChangeActiveTextEditor(handler) {
+        exports._state.onActiveEditorListeners.push(handler);
+        return new Disposable(() => {
+            const i = exports._state.onActiveEditorListeners.indexOf(handler);
+            if (i >= 0) {
+                exports._state.onActiveEditorListeners.splice(i, 1);
+            }
+        });
     },
     createOutputChannel(name) {
         const c = new MockOutputChannel(name);

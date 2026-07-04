@@ -181,6 +181,7 @@ interface MockWorkspaceFolder {
 
 interface MockTextDocument {
     uri: Uri;
+    getText?: () => string;
 }
 
 interface FileDeleteEvent {
@@ -226,7 +227,10 @@ interface State {
     notifications: Notification[];
     commands: Map<string, AnyFn>;
     activeTextEditor: MockTextEditor | undefined;
+    onActiveEditorListeners: Listener<MockTextEditor | undefined>[];
     onSaveListeners: Listener<MockTextDocument>[];
+    quickPickCalls: { items: unknown; options: unknown }[];
+    quickPickResponseQueue: (unknown | undefined)[];
     onDeleteFilesListeners: Listener<FileDeleteEvent>[];
     onRenameFilesListeners: Listener<FileRenameEvent>[];
     onConfigChangeListeners: Listener<ConfigChangeEvent>[];
@@ -251,7 +255,10 @@ export const _state: State = {
     notifications: [],
     commands: new Map(),
     activeTextEditor: undefined,
+    onActiveEditorListeners: [],
     onSaveListeners: [],
+    quickPickCalls: [],
+    quickPickResponseQueue: [],
     onDeleteFilesListeners: [],
     onRenameFilesListeners: [],
     onConfigChangeListeners: [],
@@ -276,7 +283,10 @@ export function _reset(): void {
     _state.notifications = [];
     _state.commands = new Map();
     _state.activeTextEditor = undefined;
+    _state.onActiveEditorListeners = [];
     _state.onSaveListeners = [];
+    _state.quickPickCalls = [];
+    _state.quickPickResponseQueue = [];
     _state.onDeleteFilesListeners = [];
     _state.onRenameFilesListeners = [];
     _state.onConfigChangeListeners = [];
@@ -326,10 +336,22 @@ export function _readFile(fsPath: string): string | undefined {
     return buf ? buf.toString() : undefined;
 }
 
-export function _triggerSave(uri: Uri): void {
+export function _triggerSave(uri: Uri, text?: string): void {
+    const doc: MockTextDocument = text === undefined ? { uri } : { uri, getText: () => text };
     for (const listener of _state.onSaveListeners) {
-        listener({ uri });
+        listener(doc);
     }
+}
+
+export function _setActiveEditor(editor: MockTextEditor | undefined): void {
+    _state.activeTextEditor = editor;
+    for (const listener of _state.onActiveEditorListeners) {
+        listener(editor);
+    }
+}
+
+export function _queueQuickPickResponse(value: unknown | undefined): void {
+    _state.quickPickResponseQueue.push(value);
 }
 
 export function _triggerDeleteFiles(uris: Uri[]): void {
@@ -510,6 +532,19 @@ export const window = {
     showInputBox(options?: unknown): Promise<string | undefined> {
         _state.inputBoxCalls.push({ options: options ?? {} });
         return Promise.resolve(_state.inputBoxResponseQueue.shift());
+    },
+    showQuickPick(items: unknown, options?: unknown): Promise<unknown | undefined> {
+        _state.quickPickCalls.push({ items, options: options ?? {} });
+        return Promise.resolve(_state.quickPickResponseQueue.shift());
+    },
+    onDidChangeActiveTextEditor(handler: Listener<MockTextEditor | undefined>): Disposable {
+        _state.onActiveEditorListeners.push(handler);
+        return new Disposable(() => {
+            const i = _state.onActiveEditorListeners.indexOf(handler);
+            if (i >= 0) {
+                _state.onActiveEditorListeners.splice(i, 1);
+            }
+        });
     },
     createOutputChannel(name: string): MockOutputChannel {
         const c = new MockOutputChannel(name);
