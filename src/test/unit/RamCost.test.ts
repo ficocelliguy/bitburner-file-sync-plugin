@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { computeScriptRamCost, formatRam, parseRamCosts } from '../../ram/RamCost';
+import { computeScriptRamCost, formatRam, parseRamCosts, type CostSpec } from '../../ram/RamCost';
 
 suite('parseRamCosts', () => {
     test('extracts cost from the two-line "@remarks\\n RAM cost: X GB" form', () => {
@@ -12,7 +12,7 @@ suite('parseRamCosts', () => {
 hack(host: string): Promise<number>;
 `;
         const costs = parseRamCosts(src);
-        assert.equal(costs.get('hack'), 0.1);
+        assert.equal(costs.get('hack')?.cost, 0.1);
     });
 
     test('extracts cost from the inline "@remarks RAM cost: X GB" form', () => {
@@ -23,7 +23,7 @@ hack(host: string): Promise<number>;
 getSymbols(): string[];
 `;
         const costs = parseRamCosts(src);
-        assert.equal(costs.get('getSymbols'), 2);
+        assert.equal(costs.get('getSymbols')?.cost, 2);
     });
 
     test('captures methods that are optional, generic, or plain-parameter', () => {
@@ -36,9 +36,9 @@ generic<T>(x: T): T;
 plain(x: number): number;
 `;
         const costs = parseRamCosts(src);
-        assert.equal(costs.get('optional'), 1);
-        assert.equal(costs.get('generic'), 2);
-        assert.equal(costs.get('plain'), 3);
+        assert.equal(costs.get('optional')?.cost, 1);
+        assert.equal(costs.get('generic')?.cost, 2);
+        assert.equal(costs.get('plain')?.cost, 3);
     });
 
     test('ignores JSDoc that sits above an interface/class/type/export header', () => {
@@ -56,7 +56,7 @@ export interface Foo {
         const costs = parseRamCosts(src);
         assert.equal(costs.get('export'), undefined);
         assert.equal(costs.get('interface'), undefined);
-        assert.equal(costs.get('doThing'), 0.5);
+        assert.equal(costs.get('doThing')?.cost, 0.5);
     });
 
     test('resolves duplicate method names to the higher cost', () => {
@@ -69,7 +69,7 @@ getServer(): number;
 getServer(): object;
 `;
         const costs = parseRamCosts(src);
-        assert.equal(costs.get('getServer'), 2);
+        assert.equal(costs.get('getServer')?.cost, 2);
     });
 
     test('skips methods whose JSDoc has no RAM cost marker', () => {
@@ -79,7 +79,6 @@ mystery(): void;
 `;
         const costs = parseRamCosts(src);
         assert.equal(costs.get('mystery'), undefined);
-        assert.equal(costs.size, 0);
     });
 
     test('skips property declarations (colon-form)', () => {
@@ -93,16 +92,28 @@ someProperty: number;
         const costs = parseRamCosts(src);
         assert.equal(costs.get('someProperty'), undefined);
     });
+
+    test('marks document and window as sharing the DOM cost bucket', () => {
+        // Bitburner charges DOM access once regardless of how many DOM
+        // globals a script touches, so the parser tags both with the same
+        // bucket key. `computeScriptRamCost` then bills the bucket once.
+        const costs = parseRamCosts('');
+        assert.equal(costs.get('document')?.cost, 25);
+        assert.equal(costs.get('window')?.cost, 25);
+        const bucket = costs.get('document')?.bucket;
+        assert.ok(bucket, 'document should carry a bucket key');
+        assert.equal(costs.get('window')?.bucket, bucket);
+    });
 });
 
 suite('computeScriptRamCost', () => {
-    const costs = new Map<string, number>([
-        ['hack', 0.1],
-        ['grow', 0.15],
-        ['weaken', 0.15],
-        ['getServerMoneyAvailable', 0.1],
-        ['scan', 0.2],
-        ['write', 0],
+    const costs = new Map<string, CostSpec>([
+        ['hack', { cost: 0.1 }],
+        ['grow', { cost: 0.15 }],
+        ['weaken', { cost: 0.15 }],
+        ['getServerMoneyAvailable', { cost: 0.1 }],
+        ['scan', { cost: 0.2 }],
+        ['write', { cost: 0 }],
     ]);
 
     test('returns empty when the cost table has no entries', () => {
@@ -149,6 +160,37 @@ export async function main(ns) {
         const src = 'const hack = 1; console.log(hack);';
         const result = computeScriptRamCost(src, costs);
         assert.deepEqual(result.entries, [{ name: 'hack', cost: 0.1 }]);
+    });
+
+    test('bills a shared bucket once when multiple members are present', () => {
+        // Bitburner treats `document` and `window` as one DOM-access charge.
+        // Both should surface in the breakdown so the user can see what triggered
+        // the cost, but only the first ranked member carries the bill.
+        const domCosts = new Map<string, CostSpec>([
+            ['document', { cost: 25, bucket: 'dom' }],
+            ['window', { cost: 25, bucket: 'dom' }],
+        ]);
+        const result = computeScriptRamCost('document.title; window.location;', domCosts);
+        assert.equal(result.total, 25);
+        assert.deepEqual(
+            result.entries.map(e => e.name).sort(),
+            ['document', 'window'],
+        );
+        const billed = result.entries.filter(e => e.cost > 0);
+        assert.equal(billed.length, 1);
+        assert.equal(billed[0].cost, 25);
+    });
+
+    test('bills a shared bucket in full when only one member is present', () => {
+        // Scripts that reference only `window` should still pay the full 25 GB
+        // — the discount only applies to the redundant second reference.
+        const domCosts = new Map<string, CostSpec>([
+            ['document', { cost: 25, bucket: 'dom' }],
+            ['window', { cost: 25, bucket: 'dom' }],
+        ]);
+        const result = computeScriptRamCost('window.alert("hi");', domCosts);
+        assert.equal(result.total, 25);
+        assert.deepEqual(result.entries, [{ name: 'window', cost: 25 }]);
     });
 });
 

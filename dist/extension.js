@@ -7069,6 +7069,8 @@ var StatusBar = class {
 var vscode6 = __toESM(require("vscode"));
 
 // src/ram/RamCost.ts
+var DOM_BUCKET = "dom";
+var DOM_COST = 25;
 var DECLARATION_KEYWORDS = /* @__PURE__ */ new Set([
   "export",
   "interface",
@@ -7109,12 +7111,12 @@ function parseRamCosts(source) {
       continue;
     }
     const existing = result.get(name);
-    if (existing === void 0 || cost > existing) {
-      result.set(name, cost);
+    if (existing === void 0 || cost > existing.cost) {
+      result.set(name, { cost });
     }
   }
-  result.set("document", 25);
-  result.set("window", 25);
+  result.set("document", { cost: DOM_COST, bucket: DOM_BUCKET });
+  result.set("window", { cost: DOM_COST, bucket: DOM_BUCKET });
   return result;
 }
 function computeScriptRamCost(source, costs) {
@@ -7129,14 +7131,25 @@ function computeScriptRamCost(source, costs) {
     if (found.has(name)) {
       continue;
     }
-    const cost = costs.get(name);
-    if (cost !== void 0) {
-      found.set(name, cost);
+    const spec = costs.get(name);
+    if (spec !== void 0) {
+      found.set(name, spec);
     }
   }
-  const entries = Array.from(found, ([name, cost]) => ({ name, cost }));
-  entries.sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name));
-  const total = entries.reduce((sum, e) => sum + e.cost, 0);
+  const ranked = Array.from(found, ([name, spec]) => ({ name, ...spec })).sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name));
+  const paidBuckets = /* @__PURE__ */ new Set();
+  const entries = [];
+  let total = 0;
+  for (const s of ranked) {
+    const alreadyPaid = s.bucket !== void 0 && paidBuckets.has(s.bucket);
+    const billed = alreadyPaid ? 0 : s.cost;
+    entries.push({ name: s.name, cost: billed });
+    total += billed;
+    if (s.bucket && !alreadyPaid) {
+      paidBuckets.add(s.bucket);
+    }
+  }
+  entries.push({ name: "Script base cost", cost: 1.6 });
   return { total, entries };
 }
 function formatRam(gb) {
@@ -7171,7 +7184,7 @@ var RamStatusBar = class {
       this.item.hide();
       return;
     }
-    const total = entries.reduce((sum, e) => sum + e.cost, 1.6);
+    const total = entries.reduce((sum, e) => sum + e.cost, 0);
     this.item.text = `$(chip) RAM: ${formatRam(total)}`;
     this.item.tooltip = "Estimated static RAM cost. Click for the per-method breakdown.";
     this.item.show();
@@ -7205,7 +7218,7 @@ async function showRamCostBreakdown(bar) {
 // src/ram/RamCostTracker.ts
 var vscode7 = __toESM(require("vscode"));
 var DEFINITIONS_FILE2 = "NetscriptDefinitions.d.ts";
-var SCRIPT_EXTENSIONS = /* @__PURE__ */ new Set([".js", ".ts", ".jsx", ".tsx"]);
+var SCRIPT_EXTENSIONS = FILE_EXTENSION_DEFAULTS;
 var RamCostTracker = class {
   constructor(outputChannel2, onUpdate) {
     this.outputChannel = outputChannel2;
@@ -7286,7 +7299,7 @@ function isScriptDocument(doc) {
   if (dot < 0) {
     return false;
   }
-  return SCRIPT_EXTENSIONS.has(p.slice(dot));
+  return SCRIPT_EXTENSIONS.includes(p.slice(dot));
 }
 
 // src/extension.ts

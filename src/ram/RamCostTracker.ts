@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { computeScriptRamCost, parseRamCosts, type RamCostEntry } from './RamCost';
+import { computeScriptRamCost, parseRamCosts, type CostSpec, type RamCostEntry } from './RamCost';
+import {FILE_EXTENSION_DEFAULTS} from "../config/Configuration";
 
 const DEFINITIONS_FILE = 'NetscriptDefinitions.d.ts';
 
@@ -7,7 +8,7 @@ const DEFINITIONS_FILE = 'NetscriptDefinitions.d.ts';
 // runtime executes .js/.ts/.jsx/.tsx; anything else (README, tsconfig, css)
 // isn't a script and shouldn't produce a RAM figure even if it happens to
 // mention identifiers like `hack` or `write` in prose.
-const SCRIPT_EXTENSIONS = new Set(['.js', '.ts', '.jsx', '.tsx']);
+const SCRIPT_EXTENSIONS = FILE_EXTENSION_DEFAULTS;
 
 // Watches for changes that could affect the active-editor RAM cost and
 // pushes new results to the caller-provided sink. Two independent inputs
@@ -22,7 +23,7 @@ const SCRIPT_EXTENSIONS = new Set(['.js', '.ts', '.jsx', '.tsx']);
 // on every character. Save + editor-swap covers the "I just made a change,
 // what's the number now?" case without paying that cost.
 export class RamCostTracker implements vscode.Disposable {
-    private costs: Map<string, number> = new Map();
+    private costs: Map<string, CostSpec> = new Map();
     private readonly disposables: vscode.Disposable[] = [];
 
     constructor(
@@ -112,5 +113,6 @@ function isScriptDocument(doc: vscode.TextDocument): boolean {
     if (dot < 0) {
         return false;
     }
-    return SCRIPT_EXTENSIONS.has(p.slice(dot));
+    // @ts-ignore
+    return SCRIPT_EXTENSIONS.includes(p.slice(dot));
 }

@@ -57,7 +57,7 @@ suite('RamStatusBar', () => {
         ]);
         const item = _state.statusBarItems[0];
         assert_1.strict.equal(item.shown, true);
-        assert_1.strict.match(item.text, /RAM: 0.25 GB/);
+        assert_1.strict.match(item.text, /RAM: 1.85 GB/);
         bar.dispose();
     });
     test('hides again when the entry list becomes empty', () => {
@@ -79,7 +79,7 @@ suite('RamStatusBar', () => {
         const call = _state.quickPickCalls[0];
         assert_1.strict.deepEqual(call.items.map(i => i.label), ['weaken', 'hack']);
         const opts = call.options;
-        assert_1.strict.match(opts.title ?? '', /Estimated RAM cost: 0.25 GB/);
+        assert_1.strict.match(opts.title ?? '', /Estimated RAM cost: 1.85 GB/);
         bar.dispose();
     });
     test('showRamCostBreakdown falls back to an information message when nothing is detected', async () => {

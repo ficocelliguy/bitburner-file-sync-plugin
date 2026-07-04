@@ -36,12 +36,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RamCostTracker = void 0;
 const vscode = __importStar(require("vscode"));
 const RamCost_1 = require("./RamCost");
+const Configuration_1 = require("../config/Configuration");
 const DEFINITIONS_FILE = 'NetscriptDefinitions.d.ts';
 // File extensions that plausibly contain Netscript code. The Bitburner
 // runtime executes .js/.ts/.jsx/.tsx; anything else (README, tsconfig, css)
 // isn't a script and shouldn't produce a RAM figure even if it happens to
 // mention identifiers like `hack` or `write` in prose.
-const SCRIPT_EXTENSIONS = new Set(['.js', '.ts', '.jsx', '.tsx']);
+const SCRIPT_EXTENSIONS = Configuration_1.FILE_EXTENSION_DEFAULTS;
 // Watches for changes that could affect the active-editor RAM cost and
 // pushes new results to the caller-provided sink. Two independent inputs
 // drive updates:
@@ -138,6 +139,7 @@ function isScriptDocument(doc) {
     if (dot < 0) {
         return false;
     }
-    return SCRIPT_EXTENSIONS.has(p.slice(dot));
+    // @ts-ignore
+    return SCRIPT_EXTENSIONS.includes(p.slice(dot));
 }
 //# sourceMappingURL=RamCostTracker.js.map

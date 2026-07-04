@@ -34,32 +34,17 @@ const GLOBALS_FILE = 'NetscriptGlobals.d.ts';
 // existing scripts that follow the convention keep resolving.
 const NS_PATH_ALIAS = '@ns';
 
-// Hard cap on the size of any single file synced to Bitburner. The Remote
-// API will technically accept larger payloads, but a 1 MB script almost
-// certainly indicates a build artifact, accidentally-committed binary, or
-// runaway log being saved into the sync directory — none of which the user
-// wants to round-trip through the game. Applied symmetrically to downloads
-// so a hostile/buggy server can't OOM the extension host.
+// Hard cap on the size of any single file synced to Bitburner.
 const MAX_FILE_SIZE_BYTES = 1024 * 1024;
 
-// Separate, more generous cap for NetscriptDefinitions.d.ts — it's a single,
-// known artifact from the game itself rather than user content, and TypeScript
-// declaration files for large APIs can legitimately run into the multi-MB range.
+// More generous cap for NetscriptDefinitions.d.ts
 const MAX_DEFINITIONS_SIZE_BYTES = 8 * 1024 * 1024;
 
 // Hard ceiling on how many filenames a single downloadAll() will accept from
-// the server. Real Bitburner saves are dozens to low-hundreds of scripts; a
-// listing in the thousands almost certainly means a corrupt save, a buggy
-// server, or a hostile peer trying to weaponize the unbounded sequential
-// getFile loop. Refuse the whole operation rather than start chewing through
-// it — the user can re-issue with a narrower fileExtensions filter, or look
-// at the output channel to see why the listing is unreasonable.
+// the server.
 const MAX_DOWNLOAD_FILE_COUNT = 5000;
 
 // In-game folder where deleted files are stashed instead of hard-deleted.
-// Hardcoded (not user-configurable) for now — keep the recovery story
-// predictable across workspaces. Always starts with '/'; PathMapper emits
-// leading slashes for remote paths, so the concat below is unambiguous.
 const TRASHBIN_PREFIX = '/trashbin';
 
 interface DownloadPlanEntry {

@@ -15,6 +15,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseRamCosts = parseRamCosts;
 exports.computeScriptRamCost = computeScriptRamCost;
 exports.formatRam = formatRam;
+// Shared bucket for the DOM globals. Bitburner's RamCostConstants treats
+// `document` and `window` as a single 25 GB "unsafe DOM access" charge,
+// not two independent 25 GB costs.
+const DOM_BUCKET = 'dom';
+const DOM_COST = 25;
 // TypeScript-declaration keywords that can appear immediately after a JSDoc
 // block. If the token following a comment matches one of these, we know we
 // hit an interface/class/type header rather than a method declaration and
@@ -44,6 +49,9 @@ function parseRamCosts(source) {
     // paper over the enclosed methods' individual JSDoc and attribute the
     // wrong cost.
     const re = /\/\*\*((?:[^*]|\*(?!\/))*)\*\/\s*(\w+)\s*(?:\?|<|\()/g;
+    // costRe is intentionally non-global: exec() finds the first match from
+    // the start of the JSDoc each call, so no lastIndex reset is needed
+    // across iterations.
     const costRe = /RAM cost:\s*([\d.]+)\s*GB/i;
     let m;
     while ((m = re.exec(source)) !== null) {
@@ -61,10 +69,12 @@ function parseRamCosts(source) {
             continue;
         }
         const existing = result.get(name);
-        if (existing === undefined || cost > existing) {
-            result.set(name, cost);
+        if (existing === undefined || cost > existing.cost) {
+            result.set(name, { cost });
         }
     }
+    result.set('document', { cost: DOM_COST, bucket: DOM_BUCKET });
+    result.set('window', { cost: DOM_COST, bucket: DOM_BUCKET });
     return result;
 }
 // Sum unique ns method identifiers appearing in `source`.
@@ -87,15 +97,30 @@ function computeScriptRamCost(source, costs) {
         if (found.has(name)) {
             continue;
         }
-        const cost = costs.get(name);
-        if (cost !== undefined) {
-            found.set(name, cost);
+        const spec = costs.get(name);
+        if (spec !== undefined) {
+            found.set(name, spec);
         }
     }
-    const entries = Array.from(found, ([name, cost]) => ({ name, cost }));
-    // Highest cost first; alphabetical break tie so the modal list is stable.
-    entries.sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name));
-    const total = entries.reduce((sum, e) => sum + e.cost, 0);
+    // Rank by cost desc so the first-seen member of a shared bucket carries
+    // the bill (rather than an arbitrary one, which would be non-deterministic
+    // if the two members had different per-identifier costs later). Alphabetical
+    // tiebreak keeps the modal list stable.
+    const ranked = Array.from(found, ([name, spec]) => ({ name, ...spec }))
+        .sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name));
+    const paidBuckets = new Set();
+    const entries = [];
+    let total = 0;
+    for (const s of ranked) {
+        const alreadyPaid = s.bucket !== undefined && paidBuckets.has(s.bucket);
+        const billed = alreadyPaid ? 0 : s.cost;
+        entries.push({ name: s.name, cost: billed });
+        total += billed;
+        if (s.bucket && !alreadyPaid) {
+            paidBuckets.add(s.bucket);
+        }
+    }
+    entries.push({ name: "Script base cost", cost: 1.6 });
     return { total, entries };
 }
 // Render a GB figure at the resolution the game uses (hundredth-of-a-GB).

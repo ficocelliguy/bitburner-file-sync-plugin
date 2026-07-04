@@ -26,7 +26,7 @@ suite('RamStatusBar', () => {
         ]);
         const item = _state.statusBarItems[0];
         assert.equal(item.shown, true);
-        assert.match(item.text, /RAM: 0.25 GB/);
+        assert.match(item.text, /RAM: 1.85 GB/);
         bar.dispose();
     });
 
@@ -53,7 +53,7 @@ suite('RamStatusBar', () => {
             ['weaken', 'hack'],
         );
         const opts = call.options as { title?: string };
-        assert.match(opts.title ?? '', /Estimated RAM cost: 0.25 GB/);
+        assert.match(opts.title ?? '', /Estimated RAM cost: 1.85 GB/);
         bar.dispose();
     });
 

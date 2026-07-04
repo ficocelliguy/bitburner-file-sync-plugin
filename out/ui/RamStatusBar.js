@@ -91,7 +91,7 @@ async function showRamCostBreakdown(bar) {
     const noun = entries.length === 1 ? 'method' : 'methods';
     await vscode.window.showQuickPick(entries.map(e => ({ label: e.name, description: (0, RamCost_1.formatRam)(e.cost) })), {
         title: `Estimated RAM cost: ${(0, RamCost_1.formatRam)(total)} across ${entries.length} unique ${noun}`,
-        placeHolder: 'Highest cost first. Press Escape to close.',
+        placeHolder: 'Filter ns methods...',
         canPickMany: false,
         matchOnDescription: true,
     });

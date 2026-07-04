@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Configuration = void 0;
+exports.FILE_EXTENSION_DEFAULTS = exports.Configuration = void 0;
 const vscode = __importStar(require("vscode"));
 const SECTION = 'bitburnerSync';
 class Configuration {
@@ -71,7 +71,7 @@ class Configuration {
             inspected?.defaultLanguageValue !== undefined;
         const raw = userSet
             ? (this.config.get('fileExtensions', []) ?? [])
-            : FILE_EXTENSION_DEFAULTS.slice();
+            : exports.FILE_EXTENSION_DEFAULTS.slice();
         // Accept both "js" and ".js" (and ".JS" / "  .JS  ") in user config —
         // normalize to a single leading dot, lowercased, with empties dropped.
         return raw
@@ -139,7 +139,7 @@ exports.Configuration = Configuration;
 // Keep in sync with the `default` array on `bitburnerSync.fileExtensions`
 // in package.json. Used as the in-process fallback when the user has not
 // set the value in any scope.
-const FILE_EXTENSION_DEFAULTS = [
+exports.FILE_EXTENSION_DEFAULTS = [
     '.js', '.ts', '.jsx', '.tsx', '.txt', '.json', '.css', '.py',
 ];
 function isUnsafeSyncDirectory(normalized) {

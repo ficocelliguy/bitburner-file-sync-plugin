@@ -33,7 +33,7 @@ export class RamStatusBar implements vscode.Disposable {
             this.item.hide();
             return;
         }
-        const total = entries.reduce((sum, e) => sum + e.cost, 1.6);
+        const total = entries.reduce((sum, e) => sum + e.cost, 0);
         this.item.text = `$(chip) RAM: ${formatRam(total)}`;
         this.item.tooltip = 'Estimated static RAM cost. Click for the per-method breakdown.';
         this.item.show();

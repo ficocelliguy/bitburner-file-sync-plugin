@@ -2,9 +2,7 @@
 //
 // This is a deliberately lightweight approximation of what Bitburner does
 // internally (see bitburner-src/src/Script/RamCalculations.ts, which walks a
-// full AST). The extension only needs a rough, fast number for the status
-// bar — the user has already accepted that false positives are OK, so we
-// scan text tokens instead of parsing.
+// full AST). The extension only needs a rough, fast number for the status bar.
 //
 // The cost table is derived from JSDoc `@remarks RAM cost: X GB` markers in
 // NetscriptDefinitions.d.ts, which the extension already downloads. This
@@ -20,6 +18,21 @@ export interface ScriptRamCost {
     total: number;
     entries: RamCostEntry[];
 }
+
+// A single entry in the parsed cost table. `bucket`, when set, groups
+// identifiers that share a billed cost: Bitburner charges DOM access once
+// whether a script references `document`, `window`, or both, so both get
+// the same bucket key and only the first-seen member is billed.
+export interface CostSpec {
+    cost: number;
+    bucket?: string;
+}
+
+// Shared bucket for the DOM globals. Bitburner's RamCostConstants treats
+// `document` and `window` as a single 25 GB "unsafe DOM access" charge,
+// not two independent 25 GB costs.
+const DOM_BUCKET = 'dom';
+const DOM_COST = 25;
 
 // TypeScript-declaration keywords that can appear immediately after a JSDoc
 // block. If the token following a comment matches one of these, we know we
@@ -40,8 +53,8 @@ const DECLARATION_KEYWORDS = new Set([
 // (e.g. `getServer` on both NS and Darknet) resolve to the higher cost —
 // the calculator uses a flat identifier set, and overestimating is safer
 // than underestimating for a user-facing budget number.
-export function parseRamCosts(source: string): Map<string, number> {
-    const result = new Map<string, number>();
+export function parseRamCosts(source: string): Map<string, CostSpec> {
+    const result = new Map<string, CostSpec>();
     // /**  ...  */  name  ( | ? | <
     // The `?|<|\(` character class filters property declarations (`x: T;`)
     // out — only optional-methods, generic-methods, and plain methods pass.
@@ -51,6 +64,9 @@ export function parseRamCosts(source: string): Map<string, number> {
     // paper over the enclosed methods' individual JSDoc and attribute the
     // wrong cost.
     const re = /\/\*\*((?:[^*]|\*(?!\/))*)\*\/\s*(\w+)\s*(?:\?|<|\()/g;
+    // costRe is intentionally non-global: exec() finds the first match from
+    // the start of the JSDoc each call, so no lastIndex reset is needed
+    // across iterations.
     const costRe = /RAM cost:\s*([\d.]+)\s*GB/i;
     let m: RegExpExecArray | null;
     while ((m = re.exec(source)) !== null) {
@@ -68,12 +84,12 @@ export function parseRamCosts(source: string): Map<string, number> {
             continue;
         }
         const existing = result.get(name);
-        if (existing === undefined || cost > existing) {
-            result.set(name, cost);
+        if (existing === undefined || cost > existing.cost) {
+            result.set(name, { cost });
         }
     }
-    result.set("document", 25);
-    result.set("window", 25);
+    result.set('document', { cost: DOM_COST, bucket: DOM_BUCKET });
+    result.set('window', { cost: DOM_COST, bucket: DOM_BUCKET });
     return result;
 }
 
@@ -82,17 +98,15 @@ export function parseRamCosts(source: string): Map<string, number> {
 // Deliberately simple: any word token matching a known ns method name counts
 // once, with its highest known RAM cost. This overcounts (a local `write`
 // variable, a `hack` in a string comment) — the game's own AST-based
-// calculator has similar coarse behavior when identifiers alias ns names,
-// and the user has flagged false positives as acceptable in exchange for
-// keeping this cheap.
+// calculator has similar coarse behavior when identifiers alias ns names
 export function computeScriptRamCost(
     source: string,
-    costs: Map<string, number>,
+    costs: Map<string, CostSpec>,
 ): ScriptRamCost {
     if (costs.size === 0) {
         return { total: 0, entries: [] };
     }
-    const found = new Map<string, number>();
+    const found = new Map<string, CostSpec>();
     const re = /\b(\w+)\b/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(source)) !== null) {
@@ -100,15 +114,26 @@ export function computeScriptRamCost(
         if (found.has(name)) {
             continue;
         }
-        const cost = costs.get(name);
-        if (cost !== undefined) {
-            found.set(name, cost);
+        const spec = costs.get(name);
+        if (spec !== undefined) {
+            found.set(name, spec);
         }
     }
-    const entries: RamCostEntry[] = Array.from(found, ([name, cost]) => ({ name, cost }));
-    // Highest cost first; alphabetical break tie so the modal list is stable.
-    entries.sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name));
-    const total = entries.reduce((sum, e) => sum + e.cost, 0);
+    const ranked = Array.from(found, ([name, spec]) => ({ name, ...spec }))
+        .sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name));
+    const paidBuckets = new Set<string>();
+    const entries: RamCostEntry[] = [];
+    let total = 0;
+    for (const s of ranked) {
+        const alreadyPaid = s.bucket !== undefined && paidBuckets.has(s.bucket);
+        const billed = alreadyPaid ? 0 : s.cost;
+        entries.push({ name: s.name, cost: billed });
+        total += billed;
+        if (s.bucket && !alreadyPaid) {
+            paidBuckets.add(s.bucket);
+        }
+    }
+    entries.push({name: "Script base cost", cost: 1.6});
     return { total, entries };
 }
 

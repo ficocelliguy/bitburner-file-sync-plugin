@@ -118,7 +118,7 @@ export class Configuration {
 // Keep in sync with the `default` array on `bitburnerSync.fileExtensions`
 // in package.json. Used as the in-process fallback when the user has not
 // set the value in any scope.
-const FILE_EXTENSION_DEFAULTS = [
+export const FILE_EXTENSION_DEFAULTS = [
     '.js', '.ts', '.jsx', '.tsx', '.txt', '.json', '.css', '.py',
 ] as const;
 
