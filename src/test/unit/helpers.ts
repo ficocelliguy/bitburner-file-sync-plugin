@@ -113,7 +113,7 @@ export class FakeRpcClient {
  */
 export class FakeServer extends EventEmitter {
     public sent: string[] = [];
-    public state: 'stopped' | 'waiting' | 'connected' | 'error' = 'stopped';
+    public state: 'stopped' | 'waiting' | 'connected' | 'stale' | 'error' = 'stopped';
     public isConnected = false;
     public sendShouldThrow: Error | undefined;
 

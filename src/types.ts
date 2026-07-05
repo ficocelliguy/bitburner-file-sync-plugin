@@ -44,4 +44,4 @@ export interface GetFileNamesParams {
     server: string;
 }
 
-export type ConnectionState = 'stopped' | 'waiting' | 'connected' | 'error';
+export type ConnectionState = 'stopped' | 'waiting' | 'connected' | 'stale' | 'error';

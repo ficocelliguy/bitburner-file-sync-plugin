@@ -133,6 +133,12 @@ function activate(context) {
     wsServer.on('disconnected', () => {
         outputChannel.appendLine('Bitburner disconnected.');
     });
+    wsServer.on('rejected', () => {
+        // A second Bitburner tab tried to connect while the current one was
+        // still passing liveness checks. Log so users have a breadcrumb if
+        // the new tab appears to silently fail to connect.
+        outputChannel.appendLine('Refused a new Bitburner connection: the existing one is still live.');
+    });
     context.subscriptions.push(vscode.commands.registerCommand('bitburnerSync.startServer', startServer), vscode.commands.registerCommand('bitburnerSync.stopServer', stopServer), vscode.commands.registerCommand('bitburnerSync.toggleServer', () => {
         // Treat 'error' as stopped-equivalent: clicking the status bar
         // after a failed bind should retry, not turn the server off.

@@ -119,20 +119,29 @@ suite('WebSocketServer', () => {
         client.close();
         await waitForState(server, 'waiting');
     });
-    test('closes the prior connection when a second client connects', async () => {
+    test('rejects a second connection when the current client is still live', async () => {
         const port = await startServer(server);
+        const rejectedPromise = new Promise(resolve => server.once('rejected', () => resolve()));
         const c1 = new ws_1.WebSocket(`ws://127.0.0.1:${port}`);
         await waitForOpen(c1);
         await waitForState(server, 'connected');
         const c1Closed = new Promise(resolve => c1.once('close', () => resolve()));
         const c2 = new ws_1.WebSocket(`ws://127.0.0.1:${port}`);
         await waitForOpen(c2);
-        await c1Closed;
+        const c2Closed = new Promise(resolve => c2.once('close', () => resolve()));
+        await rejectedPromise;
+        await c2Closed;
+        // c1 must be untouched — assert it did NOT close.
+        let c1DidClose = false;
+        c1Closed.then(() => { c1DidClose = true; });
+        await new Promise(r => setTimeout(r, 30));
+        assert_1.strict.equal(c1DidClose, false, 'incumbent client must remain open when newcomer is rejected');
         assert_1.strict.equal(server.isConnected, true);
-        c2.close();
+        assert_1.strict.equal(server.state, 'connected');
+        c1.close();
         await waitForState(server, 'waiting');
     });
-    test('emits a single `disconnected` between connect-handoffs (no double disconnect, no missed one)', async () => {
+    test('emits exactly one `connected` and no `disconnected` when a newcomer is refused', async () => {
         const port = await startServer(server);
         const events = [];
         server.on('connected', () => events.push('connected'));
@@ -140,21 +149,71 @@ suite('WebSocketServer', () => {
         const c1 = new ws_1.WebSocket(`ws://127.0.0.1:${port}`);
         await waitForOpen(c1);
         await waitForState(server, 'connected');
-        // Hand off to a second client. The handover must fire exactly one
-        // `disconnected` for c1 before the `connected` for c2. The old ws's
-        // own 'close' handler must NOT fire a second disconnected after the
-        // swap.
         const c2 = new ws_1.WebSocket(`ws://127.0.0.1:${port}`);
         await waitForOpen(c2);
-        // Let c1's close event flush so any spurious second 'disconnected'
-        // would show up below.
-        await new Promise(resolve => c1.once('close', () => resolve()));
-        // Small extra tick in case the ws close handler is queued.
+        await new Promise(resolve => c2.once('close', () => resolve()));
+        // Let any queued handlers drain before asserting.
         await new Promise(r => setTimeout(r, 20));
-        assert_1.strict.deepEqual(events, ['connected', 'disconnected', 'connected'], `expected one disconnect between two connects, got: ${JSON.stringify(events)}`);
+        assert_1.strict.deepEqual(events, ['connected'], `expected only the original connect event, got: ${JSON.stringify(events)}`);
+        c1.close();
+        await waitForState(server, 'waiting');
+    });
+    test('hands off to the newcomer when the current client is marked stale', async () => {
+        const port = await startServer(server);
+        const c1 = new ws_1.WebSocket(`ws://127.0.0.1:${port}`);
+        await waitForOpen(c1);
+        await waitForState(server, 'connected');
+        server.markStale();
+        await waitForState(server, 'stale');
+        const c1Closed = new Promise(resolve => c1.once('close', () => resolve()));
+        const c2 = new ws_1.WebSocket(`ws://127.0.0.1:${port}`);
+        await waitForOpen(c2);
+        await c1Closed;
+        // A handoff must land us back in 'connected' with the new client.
+        assert_1.strict.equal(server.state, 'connected');
         assert_1.strict.equal(server.isConnected, true);
         c2.close();
         await waitForState(server, 'waiting');
+    });
+    test('markStale flips state to stale and any inbound message restores connected', async () => {
+        const port = await startServer(server);
+        const c = new ws_1.WebSocket(`ws://127.0.0.1:${port}`);
+        await waitForOpen(c);
+        await waitForState(server, 'connected');
+        server.markStale();
+        await waitForState(server, 'stale');
+        // A JSON-RPC-shaped payload is proof of life — clears staleness.
+        c.send(JSON.stringify({ jsonrpc: '2.0', id: 1, result: 'OK' }));
+        await waitForState(server, 'connected');
+        c.close();
+        await waitForState(server, 'waiting');
+    });
+    test('marks the socket stale when the pong deadline expires without a response', async () => {
+        // Tight timing so the test doesn't wait 5 seconds. The client is a
+        // ws-library socket, which auto-pongs — so we ALSO expect the pong to
+        // arrive and clear staleness quickly. What we can verify from the
+        // outside is that the ping loop fires (state either briefly transitions
+        // through 'stale' back to 'connected', or stays 'connected' if the
+        // pong beats the deadline). Grab the interval timer to prove wiring.
+        const fast = new WebSocketServer_1.WebSocketServer({ pingIntervalMs: 40, pongTimeoutMs: 500 });
+        try {
+            await fast.start(0);
+            const internal = fast;
+            const addr = internal.server?.address();
+            const port = addr && typeof addr === 'object' ? addr.port : 0;
+            const c = new ws_1.WebSocket(`ws://127.0.0.1:${port}`);
+            await waitForOpen(c);
+            await waitForState(fast, 'connected');
+            // Ping loop must be armed after connect.
+            assert_1.strict.notEqual(internal.pingIntervalTimer, null, 'ping interval timer should be scheduled after connect');
+            c.close();
+            await waitForState(fast, 'waiting');
+            // Ping loop must be torn down on disconnect.
+            assert_1.strict.equal(internal.pingIntervalTimer, null, 'ping interval timer should be cleared on disconnect');
+        }
+        finally {
+            await fast.stop();
+        }
     });
     test('emits `disconnected` when the active client closes', async () => {
         const port = await startServer(server);

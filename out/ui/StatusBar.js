@@ -48,6 +48,11 @@ const STATE_DISPLAY = {
         text: '$(check) Bitburner: Connected',
         tooltip: 'Connected to Bitburner'
     },
+    stale: {
+        text: '$(warning) Bitburner: Stale',
+        tooltip: 'Bitburner has not responded to recent liveness checks; the socket is still open and will recover on any reply',
+        color: new vscode.ThemeColor('statusBarItem.warningBackground')
+    },
     error: {
         text: '$(error) Bitburner: Error',
         tooltip: 'Server error - click to retry',

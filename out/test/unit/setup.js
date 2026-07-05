@@ -40,8 +40,13 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const Module = require("module");
+const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const mockPath = path.resolve(__dirname, 'mocks', 'vscode.js');
+// Compiled runs land at out/test/unit/setup.js next to mocks/vscode.js;
+// ts-node runs land at src/test/unit/setup.ts next to mocks/vscode.ts.
+const jsMock = path.resolve(__dirname, 'mocks', 'vscode.js');
+const tsMock = path.resolve(__dirname, 'mocks', 'vscode.ts');
+const mockPath = fs.existsSync(jsMock) ? jsMock : tsMock;
 const M = Module;
 const original = M._resolveFilename;
 M._resolveFilename = function (request, parent, ...rest) {

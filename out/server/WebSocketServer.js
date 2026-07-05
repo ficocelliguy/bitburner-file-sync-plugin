@@ -8,10 +8,28 @@ const events_1 = require("events");
 // start — surface as a permanent error only after a few quick retries.
 const EADDRINUSE_RETRY_ATTEMPTS = 5;
 const EADDRINUSE_RETRY_DELAY_MS = 200;
+// Liveness-check tuning. Ping the connected client periodically; if no
+// response (pong or any inbound frame) arrives within the timeout window,
+// mark the socket 'stale' but keep it — Bitburner may still respond after a
+// hitch and we don't want to drop in-flight work. Staleness gates the
+// connection-handoff: a fresh Bitburner tab only takes over if the current
+// one has failed the liveness check.
+const DEFAULT_PING_INTERVAL_MS = 15000;
+const DEFAULT_PONG_TIMEOUT_MS = 5000;
 class WebSocketServer extends events_1.EventEmitter {
     server = null;
     client = null;
+    clientStale = false;
+    pingIntervalTimer = null;
+    pongTimeoutTimer = null;
+    pingIntervalMs;
+    pongTimeoutMs;
     _state = 'stopped';
+    constructor(options = {}) {
+        super();
+        this.pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
+        this.pongTimeoutMs = options.pongTimeoutMs ?? DEFAULT_PONG_TIMEOUT_MS;
+    }
     get state() {
         return this._state;
     }
@@ -90,9 +108,20 @@ class WebSocketServer extends events_1.EventEmitter {
                 }
             });
             this.server.on('connection', (ws) => {
+                if (this.client && this.client.readyState === ws_1.WebSocket.OPEN && !this.clientStale) {
+                    // A live client already holds the slot. Refuse the newcomer
+                    // so an accidental second Bitburner tab (or a mis-configured
+                    // one) can't kick the working connection. The refused socket
+                    // sees a clean close on its end; the current one keeps its
+                    // state and in-flight requests untouched.
+                    this.emit('rejected');
+                    ws.close();
+                    return;
+                }
                 if (this.client) {
-                    // Surface the old connection ending synchronously *before*
-                    // we announce the new one, so listeners that pair
+                    // Old client is stale (or already dying) — hand off. Surface
+                    // the old connection ending synchronously *before* we
+                    // announce the new one, so listeners that pair
                     // connect/disconnect (notably JsonRpcClient — pending
                     // requests bound to the dead socket need to fail now, not
                     // wait for their per-request timeout) don't see two
@@ -102,13 +131,20 @@ class WebSocketServer extends events_1.EventEmitter {
                     // `disconnected` after we've swapped in `ws`.
                     const old = this.client;
                     this.client = null;
+                    this.clientStale = false;
+                    this.stopPingLoop();
                     this.emit('disconnected');
                     old.close();
                 }
                 this.client = ws;
+                this.clientStale = false;
                 this.setState('connected');
                 this.emit('connected');
+                this.startPingLoop();
                 ws.on('message', (data) => {
+                    // Any inbound frame is proof of life — clear staleness
+                    // before parsing so even a malformed payload counts.
+                    this.markLive();
                     let parsed;
                     try {
                         parsed = JSON.parse(data.toString());
@@ -128,9 +164,14 @@ class WebSocketServer extends events_1.EventEmitter {
                     }
                     this.emit('message', parsed);
                 });
+                ws.on('pong', () => {
+                    this.markLive();
+                });
                 ws.on('close', () => {
                     if (this.client === ws) {
                         this.client = null;
+                        this.clientStale = false;
+                        this.stopPingLoop();
                         this.setState(this.server ? 'waiting' : 'stopped');
                         this.emit('disconnected');
                     }
@@ -142,6 +183,8 @@ class WebSocketServer extends events_1.EventEmitter {
                     // flipped to false on the next send().
                     if (this.client === ws) {
                         this.client = null;
+                        this.clientStale = false;
+                        this.stopPingLoop();
                         this.setState(this.server ? 'waiting' : 'stopped');
                         this.emit('disconnected');
                     }
@@ -152,9 +195,11 @@ class WebSocketServer extends events_1.EventEmitter {
     }
     stop() {
         return new Promise((resolve) => {
+            this.stopPingLoop();
             if (this.client) {
                 this.client.close();
                 this.client = null;
+                this.clientStale = false;
                 // Emit synchronously so listeners (JsonRpcClient) can fail
                 // in-flight requests now. The ws 'close' event will fire
                 // later but its handler's `this.client === ws` guard is
@@ -180,6 +225,62 @@ class WebSocketServer extends events_1.EventEmitter {
         }
         else {
             throw new Error('No active Bitburner connection');
+        }
+    }
+    startPingLoop() {
+        this.stopPingLoop();
+        this.pingIntervalTimer = setInterval(() => this.sendPing(), this.pingIntervalMs);
+    }
+    stopPingLoop() {
+        if (this.pingIntervalTimer) {
+            clearInterval(this.pingIntervalTimer);
+            this.pingIntervalTimer = null;
+        }
+        if (this.pongTimeoutTimer) {
+            clearTimeout(this.pongTimeoutTimer);
+            this.pongTimeoutTimer = null;
+        }
+    }
+    sendPing() {
+        if (!this.client || this.client.readyState !== ws_1.WebSocket.OPEN) {
+            return;
+        }
+        try {
+            this.client.ping();
+        }
+        catch {
+            // Rare: ping() throws on an OPEN socket. The subsequent 'error' /
+            // 'close' handlers will tear things down properly, so bail out
+            // silently rather than start a bogus pong-deadline.
+            return;
+        }
+        // Fresh ping resets the pong deadline. If a prior deadline already
+        // fired and flipped us to 'stale', that flag stays until a real
+        // response comes back (any inbound frame will clear it).
+        if (this.pongTimeoutTimer) {
+            clearTimeout(this.pongTimeoutTimer);
+        }
+        this.pongTimeoutTimer = setTimeout(() => this.markStale(), this.pongTimeoutMs);
+    }
+    markStale() {
+        this.pongTimeoutTimer = null;
+        if (!this.client || this.clientStale) {
+            return;
+        }
+        this.clientStale = true;
+        this.setState('stale');
+    }
+    markLive() {
+        if (this.pongTimeoutTimer) {
+            clearTimeout(this.pongTimeoutTimer);
+            this.pongTimeoutTimer = null;
+        }
+        if (!this.clientStale) {
+            return;
+        }
+        this.clientStale = false;
+        if (this.client && this.client.readyState === ws_1.WebSocket.OPEN) {
+            this.setState('connected');
         }
     }
     setState(state) {

@@ -3733,10 +3733,22 @@ var import_websocket_server = __toESM(require_websocket_server(), 1);
 var import_events = require("events");
 var EADDRINUSE_RETRY_ATTEMPTS = 5;
 var EADDRINUSE_RETRY_DELAY_MS = 200;
+var DEFAULT_PING_INTERVAL_MS = 15e3;
+var DEFAULT_PONG_TIMEOUT_MS = 5e3;
 var WebSocketServer2 = class extends import_events.EventEmitter {
   server = null;
   client = null;
+  clientStale = false;
+  pingIntervalTimer = null;
+  pongTimeoutTimer = null;
+  pingIntervalMs;
+  pongTimeoutMs;
   _state = "stopped";
+  constructor(options = {}) {
+    super();
+    this.pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
+    this.pongTimeoutMs = options.pongTimeoutMs ?? DEFAULT_PONG_TIMEOUT_MS;
+  }
   get state() {
     return this._state;
   }
@@ -3788,16 +3800,26 @@ var WebSocketServer2 = class extends import_events.EventEmitter {
         }
       });
       this.server.on("connection", (ws) => {
+        if (this.client && this.client.readyState === import_websocket.default.OPEN && !this.clientStale) {
+          this.emit("rejected");
+          ws.close();
+          return;
+        }
         if (this.client) {
           const old = this.client;
           this.client = null;
+          this.clientStale = false;
+          this.stopPingLoop();
           this.emit("disconnected");
           old.close();
         }
         this.client = ws;
+        this.clientStale = false;
         this.setState("connected");
         this.emit("connected");
+        this.startPingLoop();
         ws.on("message", (data) => {
+          this.markLive();
           let parsed;
           try {
             parsed = JSON.parse(data.toString());
@@ -3812,9 +3834,14 @@ var WebSocketServer2 = class extends import_events.EventEmitter {
           }
           this.emit("message", parsed);
         });
+        ws.on("pong", () => {
+          this.markLive();
+        });
         ws.on("close", () => {
           if (this.client === ws) {
             this.client = null;
+            this.clientStale = false;
+            this.stopPingLoop();
             this.setState(this.server ? "waiting" : "stopped");
             this.emit("disconnected");
           }
@@ -3822,6 +3849,8 @@ var WebSocketServer2 = class extends import_events.EventEmitter {
         ws.on("error", (err) => {
           if (this.client === ws) {
             this.client = null;
+            this.clientStale = false;
+            this.stopPingLoop();
             this.setState(this.server ? "waiting" : "stopped");
             this.emit("disconnected");
           }
@@ -3832,9 +3861,11 @@ var WebSocketServer2 = class extends import_events.EventEmitter {
   }
   stop() {
     return new Promise((resolve) => {
+      this.stopPingLoop();
       if (this.client) {
         this.client.close();
         this.client = null;
+        this.clientStale = false;
         this.emit("disconnected");
       }
       if (this.server) {
@@ -3854,6 +3885,55 @@ var WebSocketServer2 = class extends import_events.EventEmitter {
       this.client.send(data);
     } else {
       throw new Error("No active Bitburner connection");
+    }
+  }
+  startPingLoop() {
+    this.stopPingLoop();
+    this.pingIntervalTimer = setInterval(() => this.sendPing(), this.pingIntervalMs);
+  }
+  stopPingLoop() {
+    if (this.pingIntervalTimer) {
+      clearInterval(this.pingIntervalTimer);
+      this.pingIntervalTimer = null;
+    }
+    if (this.pongTimeoutTimer) {
+      clearTimeout(this.pongTimeoutTimer);
+      this.pongTimeoutTimer = null;
+    }
+  }
+  sendPing() {
+    if (!this.client || this.client.readyState !== import_websocket.default.OPEN) {
+      return;
+    }
+    try {
+      this.client.ping();
+    } catch {
+      return;
+    }
+    if (this.pongTimeoutTimer) {
+      clearTimeout(this.pongTimeoutTimer);
+    }
+    this.pongTimeoutTimer = setTimeout(() => this.markStale(), this.pongTimeoutMs);
+  }
+  markStale() {
+    this.pongTimeoutTimer = null;
+    if (!this.client || this.clientStale) {
+      return;
+    }
+    this.clientStale = true;
+    this.setState("stale");
+  }
+  markLive() {
+    if (this.pongTimeoutTimer) {
+      clearTimeout(this.pongTimeoutTimer);
+      this.pongTimeoutTimer = null;
+    }
+    if (!this.clientStale) {
+      return;
+    }
+    this.clientStale = false;
+    if (this.client && this.client.readyState === import_websocket.default.OPEN) {
+      this.setState("connected");
     }
   }
   setState(state) {
@@ -7040,6 +7120,11 @@ var STATE_DISPLAY = {
     text: "$(check) Bitburner: Connected",
     tooltip: "Connected to Bitburner"
   },
+  stale: {
+    text: "$(warning) Bitburner: Stale",
+    tooltip: "Bitburner has not responded to recent liveness checks; the socket is still open and will recover on any reply",
+    color: new vscode5.ThemeColor("statusBarItem.warningBackground")
+  },
   error: {
     text: "$(error) Bitburner: Error",
     tooltip: "Server error - click to retry",
@@ -7372,6 +7457,9 @@ function activate(context) {
   });
   wsServer.on("disconnected", () => {
     outputChannel.appendLine("Bitburner disconnected.");
+  });
+  wsServer.on("rejected", () => {
+    outputChannel.appendLine("Refused a new Bitburner connection: the existing one is still live.");
   });
   context.subscriptions.push(
     vscode8.commands.registerCommand("bitburnerSync.startServer", startServer),
