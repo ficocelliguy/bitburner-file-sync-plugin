@@ -103,6 +103,26 @@ suite('BitburnerApi', () => {
             assert_1.strict.deepEqual(rpc.calls[0], { method: 'getDefinitionFile', params: undefined });
         });
     });
+    suite('calculateRam', () => {
+        test('sends calculateRam with filename and default server, returns the number', async () => {
+            rpc.queueResponse('calculateRam', 3.75);
+            const result = await api.calculateRam('/main.js');
+            assert_1.strict.equal(result, 3.75);
+            assert_1.strict.deepEqual(rpc.calls[0], {
+                method: 'calculateRam',
+                params: { filename: '/main.js', server: 'home' },
+            });
+        });
+        test('honors a server override when one is provided', async () => {
+            rpc.queueResponse('calculateRam', 0);
+            await api.calculateRam('/main.js', 'n00dles');
+            assert_1.strict.equal(rpc.calls[0].params.server, 'n00dles');
+        });
+        test('propagates errors from the RPC layer (e.g. file not found)', async () => {
+            rpc.queueError('calculateRam', new Error('File not found'));
+            await assert_1.strict.rejects(api.calculateRam('/missing.js'), /File not found/);
+        });
+    });
     test('propagates errors raised by the RPC layer', async () => {
         rpc.queueError('pushFile', new Error('boom'));
         await assert_1.strict.rejects(api.pushFile('/x.js', 'x'), /boom/);

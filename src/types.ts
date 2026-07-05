@@ -44,4 +44,9 @@ export interface GetFileNamesParams {
     server: string;
 }
 
+export interface CalculateRamParams {
+    filename: string;
+    server: string;
+}
+
 export type ConnectionState = 'stopped' | 'waiting' | 'connected' | 'stale' | 'error';

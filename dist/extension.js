@@ -4088,6 +4088,13 @@ var BitburnerApi = class {
   async getDefinitionFile() {
     return this.rpc.request("getDefinitionFile");
   }
+  async calculateRam(filename, server) {
+    const params = {
+      filename,
+      server: server ?? this.defaultServer
+    };
+    return this.rpc.request("calculateRam", params);
+  }
 };
 
 // src/config/Configuration.ts
@@ -6078,6 +6085,10 @@ var SyncEngine = class {
   pathMapper;
   debounceTimers = /* @__PURE__ */ new Map();
   outputChannel;
+  // Listeners fired after a successful pushFile. The tracker uses this to
+  // know when to ask Bitburner for the file's RAM cost — asking on save
+  // alone would race the debounced push and return the pre-save number.
+  pushListeners = [];
   // Absolute filesystem path to the directory holding the extension's
   // bundled @types packages (dist/types). Used to construct absolute
   // `paths` entries in user tsconfigs that resolve `react`/`react-dom`
@@ -6119,6 +6130,30 @@ var SyncEngine = class {
     this.log(`Pushed: ${remotePath}`);
     if (this.config.showNotifications) {
       vscode3.window.showInformationMessage(`Synced: ${remotePath}`);
+    }
+    this.emitPushed(remotePath);
+  }
+  // Register a listener called with the remote path after each successful
+  // pushFile (manual command, auto-sync save, rename-push, etc.). Returns
+  // a Disposable so callers can unsubscribe on dispose.
+  onDidPush(listener) {
+    this.pushListeners.push(listener);
+    return {
+      dispose: () => {
+        const i = this.pushListeners.indexOf(listener);
+        if (i >= 0) {
+          this.pushListeners.splice(i, 1);
+        }
+      }
+    };
+  }
+  emitPushed(remote) {
+    for (const listener of this.pushListeners) {
+      try {
+        listener(remote);
+      } catch (err) {
+        this.log(`onDidPush listener threw: ${err instanceof Error ? err.message : err}`);
+      }
     }
   }
   async syncAll() {
@@ -7154,89 +7189,6 @@ var StatusBar = class {
 var vscode6 = __toESM(require("vscode"));
 
 // src/ram/RamCost.ts
-var DOM_BUCKET = "dom";
-var DOM_COST = 25;
-var DECLARATION_KEYWORDS = /* @__PURE__ */ new Set([
-  "export",
-  "interface",
-  "class",
-  "type",
-  "enum",
-  "namespace",
-  "declare",
-  "function",
-  "const",
-  "let",
-  "var",
-  "abstract",
-  "readonly",
-  "public",
-  "private",
-  "protected",
-  "static",
-  "async"
-]);
-function parseRamCosts(source) {
-  const result = /* @__PURE__ */ new Map();
-  const re = /\/\*\*((?:[^*]|\*(?!\/))*)\*\/\s*(\w+)\s*(?:\?|<|\()/g;
-  const costRe = /RAM cost:\s*([\d.]+)\s*GB/i;
-  let m;
-  while ((m = re.exec(source)) !== null) {
-    const jsdoc = m[1];
-    const name = m[2];
-    if (DECLARATION_KEYWORDS.has(name)) {
-      continue;
-    }
-    const cm = costRe.exec(jsdoc);
-    if (!cm) {
-      continue;
-    }
-    const cost = parseFloat(cm[1]);
-    if (!Number.isFinite(cost) || cost < 0) {
-      continue;
-    }
-    const existing = result.get(name);
-    if (existing === void 0 || cost > existing.cost) {
-      result.set(name, { cost });
-    }
-  }
-  result.set("document", { cost: DOM_COST, bucket: DOM_BUCKET });
-  result.set("window", { cost: DOM_COST, bucket: DOM_BUCKET });
-  return result;
-}
-function computeScriptRamCost(source, costs) {
-  if (costs.size === 0) {
-    return { total: 0, entries: [] };
-  }
-  const found = /* @__PURE__ */ new Map();
-  const re = /\b(\w+)\b/g;
-  let m;
-  while ((m = re.exec(source)) !== null) {
-    const name = m[1];
-    if (found.has(name)) {
-      continue;
-    }
-    const spec = costs.get(name);
-    if (spec !== void 0) {
-      found.set(name, spec);
-    }
-  }
-  const ranked = Array.from(found, ([name, spec]) => ({ name, ...spec })).sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name));
-  const paidBuckets = /* @__PURE__ */ new Set();
-  const entries = [];
-  let total = 0;
-  for (const s of ranked) {
-    const alreadyPaid = s.bucket !== void 0 && paidBuckets.has(s.bucket);
-    const billed = alreadyPaid ? 0 : s.cost;
-    entries.push({ name: s.name, cost: billed });
-    total += billed;
-    if (s.bucket && !alreadyPaid) {
-      paidBuckets.add(s.bucket);
-    }
-  }
-  entries.push({ name: "Script base cost", cost: 1.6 });
-  return { total, entries };
-}
 function formatRam(gb) {
   if (!Number.isFinite(gb)) {
     return "?? GB";
@@ -7247,131 +7199,136 @@ function formatRam(gb) {
 }
 
 // src/ui/RamStatusBar.ts
-var SHOW_BREAKDOWN_COMMAND = "bitburnerSync.showRamCostBreakdown";
 var STATUS_BAR_PRIORITY = 99;
 var RamStatusBar = class {
   item;
-  lastEntries = [];
   constructor() {
     this.item = vscode6.window.createStatusBarItem(
       vscode6.StatusBarAlignment.Left,
       STATUS_BAR_PRIORITY
     );
-    this.item.command = SHOW_BREAKDOWN_COMMAND;
     this.item.hide();
   }
-  // Replace the currently-shown estimate. Passing an empty array hides
-  // the item entirely — the user asked that the indicator disappear when
-  // the active file has no identifiable Netscript methods.
-  update(entries) {
-    this.lastEntries = entries.slice();
-    if (entries.length === 0) {
+  // Show `total` GB, or hide the item when total is undefined (not a
+  // script, no connection, or the server can't compute the cost).
+  update(total) {
+    if (total === void 0) {
       this.item.hide();
       return;
     }
-    const total = entries.reduce((sum, e) => sum + e.cost, 0);
     this.item.text = `$(chip) RAM: ${formatRam(total)}`;
-    this.item.tooltip = "Estimated static RAM cost. Click for the per-method breakdown.";
+    this.item.tooltip = "RAM cost reported by Bitburner for the file on the server.";
     this.item.show();
-  }
-  getEntries() {
-    return this.lastEntries;
   }
   dispose() {
     this.item.dispose();
   }
 };
-async function showRamCostBreakdown(bar) {
-  const entries = bar.getEntries();
-  if (entries.length === 0) {
-    await vscode6.window.showInformationMessage("No Netscript methods detected in the current file.");
-    return;
-  }
-  const total = entries.reduce((sum, e) => sum + e.cost, 0);
-  const noun = entries.length === 1 ? "method" : "methods";
-  await vscode6.window.showQuickPick(
-    entries.map((e) => ({ label: e.name, description: formatRam(e.cost) })),
-    {
-      title: `Estimated RAM cost: ${formatRam(total)} across ${entries.length} unique ${noun}`,
-      placeHolder: "Filter ns methods...",
-      canPickMany: false,
-      matchOnDescription: true
-    }
-  );
-}
 
 // src/ram/RamCostTracker.ts
 var vscode7 = __toESM(require("vscode"));
-var DEFINITIONS_FILE2 = "NetscriptDefinitions.d.ts";
 var SCRIPT_EXTENSIONS = FILE_EXTENSION_DEFAULTS;
 var RamCostTracker = class {
-  constructor(outputChannel2, onUpdate) {
+  constructor(outputChannel2, onUpdate, api2, config2, wsServer2, syncEngine2) {
     this.outputChannel = outputChannel2;
     this.onUpdate = onUpdate;
-    const primary = vscode7.workspace.workspaceFolders?.[0];
-    if (primary) {
-      const pattern = new vscode7.RelativePattern(primary, DEFINITIONS_FILE2);
-      const watcher = vscode7.workspace.createFileSystemWatcher(pattern);
-      const reload = () => {
-        void this.reload();
-      };
-      watcher.onDidCreate(reload, null, this.disposables);
-      watcher.onDidChange(reload, null, this.disposables);
-      watcher.onDidDelete(() => {
-        this.costs = /* @__PURE__ */ new Map();
-        this.recompute();
-      }, null, this.disposables);
-      this.disposables.push(watcher);
-    }
+    this.api = api2;
+    this.config = config2;
+    this.wsServer = wsServer2;
+    this.pathMapper = new PathMapper(config2);
     this.disposables.push(
-      vscode7.window.onDidChangeActiveTextEditor(() => this.recompute()),
-      vscode7.workspace.onDidSaveTextDocument((doc) => {
-        const active = vscode7.window.activeTextEditor;
-        if (active && active.document.uri.toString() === doc.uri.toString()) {
-          this.recompute();
+      vscode7.window.onDidChangeActiveTextEditor(() => {
+        void this.recompute();
+      })
+    );
+    this.disposables.push(
+      syncEngine2.onDidPush((remote) => {
+        const activeRemote = this.activeRemotePath();
+        if (activeRemote !== void 0 && activeRemote === remote) {
+          void this.recompute();
         }
       })
     );
+    this.onConnected = () => {
+      void this.recompute();
+    };
+    this.onDisconnected = () => {
+      this.recomputeToken++;
+      this.onUpdate(void 0);
+    };
+    this.wsServer.on("connected", this.onConnected);
+    this.wsServer.on("disconnected", this.onDisconnected);
   }
   outputChannel;
   onUpdate;
-  costs = /* @__PURE__ */ new Map();
+  api;
+  config;
+  wsServer;
   disposables = [];
-  // One-shot load at activation. Kept separate from the constructor so
-  // callers can await the initial cost-table read and know the first
-  // recompute isn't going to hit an empty map when a d.ts is already on
-  // disk.
+  pathMapper;
+  // Monotonic token so an older in-flight calculateRam can't overwrite a
+  // newer result. Every recompute() bumps this; when the RPC resolves,
+  // we compare against the current value and drop the write if we've
+  // been superseded.
+  recomputeToken = 0;
+  onConnected;
+  onDisconnected;
+  // Public trigger for the initial read at activation time.
   async initialize() {
-    await this.reload();
+    await this.recompute();
   }
-  async reload() {
-    const primary = vscode7.workspace.workspaceFolders?.[0];
-    if (!primary) {
-      this.costs = /* @__PURE__ */ new Map();
-      this.recompute();
-      return;
-    }
-    const uri = vscode7.Uri.joinPath(primary.uri, DEFINITIONS_FILE2);
-    try {
-      const bytes = await vscode7.workspace.fs.readFile(uri);
-      const source = Buffer.from(bytes).toString("utf8");
-      this.costs = parseRamCosts(source);
-      this.outputChannel.appendLine(`RAM cost table loaded: ${this.costs.size} Netscript methods`);
-    } catch {
-      this.costs = /* @__PURE__ */ new Map();
-    }
-    this.recompute();
-  }
-  recompute() {
+  async recompute() {
+    const token = ++this.recomputeToken;
     const editor = vscode7.window.activeTextEditor;
     if (!editor || !isScriptDocument(editor.document)) {
-      this.onUpdate([]);
+      this.onUpdate(void 0);
       return;
     }
-    const { entries } = computeScriptRamCost(editor.document.getText(), this.costs);
-    this.onUpdate(entries);
+    if (!this.wsServer.isConnected) {
+      this.onUpdate(void 0);
+      return;
+    }
+    let remotePath;
+    try {
+      remotePath = this.pathMapper.mapToRemote(editor.document.uri);
+    } catch {
+      this.onUpdate(void 0);
+      return;
+    }
+    try {
+      const cost = await this.api.calculateRam(remotePath, this.config.targetServer);
+      if (token !== this.recomputeToken) {
+        return;
+      }
+      if (typeof cost !== "number" || !Number.isFinite(cost) || cost < 0) {
+        this.onUpdate(void 0);
+        return;
+      }
+      this.onUpdate(cost);
+    } catch (err) {
+      if (token !== this.recomputeToken) {
+        return;
+      }
+      this.outputChannel.appendLine(
+        `calculateRam(${remotePath}) failed: ${err instanceof Error ? err.message : err}`
+      );
+      this.onUpdate(void 0);
+    }
+  }
+  activeRemotePath() {
+    const editor = vscode7.window.activeTextEditor;
+    if (!editor || !isScriptDocument(editor.document)) {
+      return void 0;
+    }
+    try {
+      return this.pathMapper.mapToRemote(editor.document.uri);
+    } catch {
+      return void 0;
+    }
   }
   dispose() {
+    this.wsServer.off("connected", this.onConnected);
+    this.wsServer.off("disconnected", this.onDisconnected);
     for (const d of this.disposables) {
       d.dispose();
     }
@@ -7384,7 +7341,8 @@ function isScriptDocument(doc) {
   if (dot < 0) {
     return false;
   }
-  return SCRIPT_EXTENSIONS.includes(p.slice(dot));
+  const ext2 = p.slice(dot);
+  return SCRIPT_EXTENSIONS.includes(ext2);
 }
 
 // src/extension.ts
@@ -7437,7 +7395,14 @@ function activate(context) {
   fileWatcher = new FileWatcher(syncEngine, config);
   statusBar = new StatusBar();
   ramStatusBar = new RamStatusBar();
-  ramCostTracker = new RamCostTracker(outputChannel, (entries) => ramStatusBar.update(entries));
+  ramCostTracker = new RamCostTracker(
+    outputChannel,
+    (total) => ramStatusBar.update(total),
+    api,
+    config,
+    wsServer,
+    syncEngine
+  );
   wsServer.on("stateChanged", (state) => {
     statusBar.update(state);
   });
@@ -7533,7 +7498,6 @@ function activate(context) {
         vscode8.window.showErrorMessage(`Failed to download files: ${err}`);
       }
     }),
-    vscode8.commands.registerCommand(SHOW_BREAKDOWN_COMMAND, () => showRamCostBreakdown(ramStatusBar)),
     outputChannel,
     statusBar,
     ramStatusBar,

@@ -81,6 +81,10 @@ class SyncEngine {
     pathMapper;
     debounceTimers = new Map();
     outputChannel;
+    // Listeners fired after a successful pushFile. The tracker uses this to
+    // know when to ask Bitburner for the file's RAM cost — asking on save
+    // alone would race the debounced push and return the pre-save number.
+    pushListeners = [];
     // Absolute filesystem path to the directory holding the extension's
     // bundled @types packages (dist/types). Used to construct absolute
     // `paths` entries in user tsconfigs that resolve `react`/`react-dom`
@@ -139,6 +143,31 @@ class SyncEngine {
         this.log(`Pushed: ${remotePath}`);
         if (this.config.showNotifications) {
             vscode.window.showInformationMessage(`Synced: ${remotePath}`);
+        }
+        this.emitPushed(remotePath);
+    }
+    // Register a listener called with the remote path after each successful
+    // pushFile (manual command, auto-sync save, rename-push, etc.). Returns
+    // a Disposable so callers can unsubscribe on dispose.
+    onDidPush(listener) {
+        this.pushListeners.push(listener);
+        return {
+            dispose: () => {
+                const i = this.pushListeners.indexOf(listener);
+                if (i >= 0) {
+                    this.pushListeners.splice(i, 1);
+                }
+            }
+        };
+    }
+    emitPushed(remote) {
+        for (const listener of this.pushListeners) {
+            try {
+                listener(remote);
+            }
+            catch (err) {
+                this.log(`onDidPush listener threw: ${err instanceof Error ? err.message : err}`);
+            }
         }
     }
     async syncAll() {

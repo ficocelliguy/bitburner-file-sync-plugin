@@ -4,7 +4,7 @@
   "description": "Sync local workspace files to Bitburner via the Remote File API",
   "repository": "https://github.com/ficocelliguy/bitburner-file-sync-plugin",
   "publisher": "FicocelliGuy",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "engines": {
     "vscode": "^1.118.0"
   },
@@ -48,20 +48,12 @@
       {
         "command": "bitburnerSync.toggleServer",
         "title": "Bitburner: Toggle Sync Server"
-      },
-      {
-        "command": "bitburnerSync.showRamCostBreakdown",
-        "title": "Bitburner: Show RAM Cost Breakdown"
       }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "bitburnerSync.toggleServer",
-          "when": "false"
-        },
-        {
-          "command": "bitburnerSync.showRamCostBreakdown",
           "when": "false"
         }
       ]
@@ -142,6 +134,7 @@
     }
   },
   "scripts": {
+    "publish": "npm run package && vsce package && vsce publish",
     "vscode:prepublish": "npm run package",
     "compile": "npm run check-types && npm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",

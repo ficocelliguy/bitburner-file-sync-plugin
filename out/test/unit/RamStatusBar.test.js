@@ -41,60 +41,27 @@ suite('RamStatusBar', () => {
     setup(() => {
         _reset();
     });
-    test('creates a left-aligned item wired to the breakdown command, initially hidden', () => {
+    test('creates a left-aligned item, initially hidden', () => {
         const bar = new RamStatusBar_1.RamStatusBar();
         const item = _state.statusBarItems[0];
         assert_1.strict.equal(item.alignment, StatusBarAlignment.Left);
-        assert_1.strict.equal(item.command, RamStatusBar_1.SHOW_BREAKDOWN_COMMAND);
         assert_1.strict.equal(item.shown, false);
         bar.dispose();
     });
-    test('shows total + label when entries arrive', () => {
+    test('shows the formatted total when a number arrives', () => {
         const bar = new RamStatusBar_1.RamStatusBar();
-        // computeScriptRamCost always appends a "Script base cost" line for
-        // the 1.6 GB launch overhead, so real callers hand that entry down
-        // to the status bar too. Mirror that here.
-        bar.update([
-            { name: 'hack', cost: 0.1 },
-            { name: 'grow', cost: 0.15 },
-            { name: 'Script base cost', cost: 1.6 },
-        ]);
+        bar.update(1.85);
         const item = _state.statusBarItems[0];
         assert_1.strict.equal(item.shown, true);
         assert_1.strict.match(item.text, /RAM: 1.85 GB/);
         bar.dispose();
     });
-    test('hides again when the entry list becomes empty', () => {
+    test('hides when total is undefined', () => {
         const bar = new RamStatusBar_1.RamStatusBar();
-        bar.update([{ name: 'hack', cost: 0.1 }]);
-        bar.update([]);
+        bar.update(2.5);
+        bar.update(undefined);
         const item = _state.statusBarItems[0];
         assert_1.strict.equal(item.shown, false);
-        bar.dispose();
-    });
-    test('showRamCostBreakdown opens a QuickPick populated from the last update', async () => {
-        const bar = new RamStatusBar_1.RamStatusBar();
-        bar.update([
-            { name: 'weaken', cost: 0.15 },
-            { name: 'hack', cost: 0.1 },
-            { name: 'Script base cost', cost: 1.6 },
-        ]);
-        await (0, RamStatusBar_1.showRamCostBreakdown)(bar);
-        assert_1.strict.equal(_state.quickPickCalls.length, 1);
-        const call = _state.quickPickCalls[0];
-        // The base-cost line surfaces in the picker too, at the bottom
-        // where computeScriptRamCost places it.
-        assert_1.strict.deepEqual(call.items.map(i => i.label), ['weaken', 'hack', 'Script base cost']);
-        const opts = call.options;
-        assert_1.strict.match(opts.title ?? '', /Estimated RAM cost: 1.85 GB/);
-        bar.dispose();
-    });
-    test('showRamCostBreakdown falls back to an information message when nothing is detected', async () => {
-        const bar = new RamStatusBar_1.RamStatusBar();
-        await (0, RamStatusBar_1.showRamCostBreakdown)(bar);
-        assert_1.strict.equal(_state.quickPickCalls.length, 0);
-        assert_1.strict.equal(_state.notifications.length, 1);
-        assert_1.strict.match(_state.notifications[0].message, /No Netscript methods/);
         bar.dispose();
     });
 });

@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.1.1
+- Added static RAM cost estimate for the active script in the status bar. Click for a per-method breakdown!
+- Added a periodic liveness ping to the connected Bitburner instance. A second tab now only takes over the connection if the current one has gone stale, so a second Bitburner tab can't kick a working session
+
 ## 0.1.0
 - Renames and moves in VS Code now mirror to Bitburner
 - Deletes done in VS Code moves the deleted file in-game to `/trashbin/<original-path>` instead of being erased, so accidental deletes are recoverable from inside the game

@@ -42,6 +42,13 @@ class BitburnerApi {
     async getDefinitionFile() {
         return this.rpc.request('getDefinitionFile');
     }
+    async calculateRam(filename, server) {
+        const params = {
+            filename,
+            server: server ?? this.defaultServer
+        };
+        return this.rpc.request('calculateRam', params);
+    }
 }
 exports.BitburnerApi = BitburnerApi;
 //# sourceMappingURL=BitburnerApi.js.map

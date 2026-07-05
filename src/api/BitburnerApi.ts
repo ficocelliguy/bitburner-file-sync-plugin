@@ -1,5 +1,12 @@
 import type { JsonRpcClient } from '../server/JsonRpcClient';
-import type { FileInfo, PushFileParams, GetFileParams, DeleteFileParams, GetFileNamesParams } from '../types';
+import type {
+    FileInfo,
+    PushFileParams,
+    GetFileParams,
+    DeleteFileParams,
+    GetFileNamesParams,
+    CalculateRamParams,
+} from '../types';
 
 export class BitburnerApi {
     constructor(
@@ -45,5 +52,13 @@ export class BitburnerApi {
 
     async getDefinitionFile(): Promise<string> {
         return this.rpc.request<string>('getDefinitionFile');
+    }
+
+    async calculateRam(filename: string, server?: string): Promise<number> {
+        const params: CalculateRamParams = {
+            filename,
+            server: server ?? this.defaultServer
+        };
+        return this.rpc.request<number>('calculateRam', params);
     }
 }

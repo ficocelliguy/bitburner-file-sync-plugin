@@ -7,7 +7,7 @@ import { Configuration } from './config/Configuration';
 import { SyncEngine } from './sync/SyncEngine';
 import { FileWatcher } from './sync/FileWatcher';
 import { StatusBar } from './ui/StatusBar';
-import { RamStatusBar, SHOW_BREAKDOWN_COMMAND, showRamCostBreakdown } from './ui/RamStatusBar';
+import { RamStatusBar } from './ui/RamStatusBar';
 import { RamCostTracker } from './ram/RamCostTracker';
 
 let wsServer: WebSocketServer;
@@ -76,7 +76,14 @@ export function activate(context: vscode.ExtensionContext): void {
     fileWatcher = new FileWatcher(syncEngine, config);
     statusBar = new StatusBar();
     ramStatusBar = new RamStatusBar();
-    ramCostTracker = new RamCostTracker(outputChannel, (entries) => ramStatusBar.update(entries));
+    ramCostTracker = new RamCostTracker(
+        outputChannel,
+        (total) => ramStatusBar.update(total),
+        api,
+        config,
+        wsServer,
+        syncEngine,
+    );
 
     wsServer.on('stateChanged', (state) => {
         statusBar.update(state);
@@ -189,7 +196,6 @@ export function activate(context: vscode.ExtensionContext): void {
                 vscode.window.showErrorMessage(`Failed to download files: ${err}`);
             }
         }),
-        vscode.commands.registerCommand(SHOW_BREAKDOWN_COMMAND, () => showRamCostBreakdown(ramStatusBar)),
         outputChannel,
         statusBar,
         ramStatusBar,
@@ -242,11 +248,10 @@ export function activate(context: vscode.ExtensionContext): void {
     // failures are logged inside the call.
     void syncEngine.ensureTypeDefinitionsSetup();
 
-    // First read of the RAM cost table. If NetscriptDefinitions.d.ts is
-    // already in the workspace (existing user, or the migration path just
-    // wrote it), the status bar becomes useful immediately; otherwise the
-    // file-watcher inside the tracker will populate it after the first
-    // download.
+    // First cost read at activation. If Bitburner is already connected
+    // (autoStart + a live tab), the tracker asks calculateRam for the
+    // active editor's file right away; otherwise it stays hidden until
+    // the WebSocket 'connected' event fires.
     void ramCostTracker.initialize();
 }
 

@@ -1,105 +1,138 @@
 import * as vscode from 'vscode';
-import { computeScriptRamCost, parseRamCosts, type CostSpec, type RamCostEntry } from './RamCost';
-import {FILE_EXTENSION_DEFAULTS} from "../config/Configuration";
-
-const DEFINITIONS_FILE = 'NetscriptDefinitions.d.ts';
+import type { BitburnerApi } from '../api/BitburnerApi';
+import type { Configuration } from '../config/Configuration';
+import { FILE_EXTENSION_DEFAULTS } from '../config/Configuration';
+import { PathMapper } from '../sync/PathMapper';
+import type { SyncEngine } from '../sync/SyncEngine';
+import type { WebSocketServer } from '../server/WebSocketServer';
 
 // File extensions that plausibly contain Netscript code. The Bitburner
 // runtime executes .js/.ts/.jsx/.tsx; anything else (README, tsconfig, css)
-// isn't a script and shouldn't produce a RAM figure even if it happens to
-// mention identifiers like `hack` or `write` in prose.
+// isn't a script and shouldn't produce a RAM figure.
 const SCRIPT_EXTENSIONS = FILE_EXTENSION_DEFAULTS;
 
-// Watches for changes that could affect the active-editor RAM cost and
-// pushes new results to the caller-provided sink. Two independent inputs
-// drive updates:
-//   1. NetscriptDefinitions.d.ts — the source of truth for the cost table.
-//      Rebuilt on create/change; cleared on delete.
-//   2. The active editor's script text — recomputed when the user switches
-//      editors or saves the current file.
-//
-// Save (not every keystroke) is intentional: the user asked for a light,
-// fast indicator, and keystroke-driven recompute would run the regex scan
-// on every character. Save + editor-swap covers the "I just made a change,
-// what's the number now?" case without paying that cost.
+// Asks Bitburner for the RAM cost of the active file and forwards the
+// result to the caller-provided sink. Two things drive an update:
+//   1. The user switches editors — we recompute for the newly-active file.
+//   2. A pushFile finishes (auto-sync on save, manual `Sync Current File`,
+//      rename-push). We wait for the push to complete rather than firing
+//      on the save event so calculateRam sees the just-pushed content.
+// The status bar is hidden while disconnected, on files outside the
+// syncable set, or when the server can't compute a cost (file not on
+// server yet, parse error, etc.).
 export class RamCostTracker implements vscode.Disposable {
-    private costs: Map<string, CostSpec> = new Map();
     private readonly disposables: vscode.Disposable[] = [];
+    private readonly pathMapper: PathMapper;
+    // Monotonic token so an older in-flight calculateRam can't overwrite a
+    // newer result. Every recompute() bumps this; when the RPC resolves,
+    // we compare against the current value and drop the write if we've
+    // been superseded.
+    private recomputeToken = 0;
+    private readonly onConnected: () => void;
+    private readonly onDisconnected: () => void;
 
     constructor(
         private readonly outputChannel: vscode.OutputChannel,
-        private readonly onUpdate: (entries: RamCostEntry[]) => void,
+        private readonly onUpdate: (total: number | undefined) => void,
+        private readonly api: BitburnerApi,
+        private readonly config: Configuration,
+        private readonly wsServer: WebSocketServer,
+        syncEngine: SyncEngine,
     ) {
-        const primary = vscode.workspace.workspaceFolders?.[0];
-        if (primary) {
-            const pattern = new vscode.RelativePattern(primary, DEFINITIONS_FILE);
-            const watcher = vscode.workspace.createFileSystemWatcher(pattern);
-            const reload = (): void => { void this.reload(); };
-            watcher.onDidCreate(reload, null, this.disposables);
-            watcher.onDidChange(reload, null, this.disposables);
-            watcher.onDidDelete(() => {
-                this.costs = new Map();
-                this.recompute();
-            }, null, this.disposables);
-            this.disposables.push(watcher);
-        }
+        this.pathMapper = new PathMapper(config);
 
         this.disposables.push(
-            vscode.window.onDidChangeActiveTextEditor(() => this.recompute()),
-            vscode.workspace.onDidSaveTextDocument((doc) => {
-                const active = vscode.window.activeTextEditor;
-                // Only recompute if the saved doc *is* the active doc.
-                // Background saves (autosave of a hidden buffer, formatter
-                // save-on-focus-change) shouldn't override the number for
-                // whatever file the user is currently looking at.
-                if (active && active.document.uri.toString() === doc.uri.toString()) {
-                    this.recompute();
+            vscode.window.onDidChangeActiveTextEditor(() => {
+                void this.recompute();
+            }),
+        );
+
+        // Recompute after each push so the number reflects what's actually
+        // on the server. Filter to the active editor's file — background
+        // syncAll runs don't tell us anything about the file the user is
+        // looking at.
+        this.disposables.push(
+            syncEngine.onDidPush((remote) => {
+                const activeRemote = this.activeRemotePath();
+                if (activeRemote !== undefined && activeRemote === remote) {
+                    void this.recompute();
                 }
             }),
         );
+
+        this.onConnected = (): void => { void this.recompute(); };
+        this.onDisconnected = (): void => {
+            this.recomputeToken++;
+            this.onUpdate(undefined);
+        };
+        this.wsServer.on('connected', this.onConnected);
+        this.wsServer.on('disconnected', this.onDisconnected);
     }
 
-    // One-shot load at activation. Kept separate from the constructor so
-    // callers can await the initial cost-table read and know the first
-    // recompute isn't going to hit an empty map when a d.ts is already on
-    // disk.
+    // Public trigger for the initial read at activation time.
     async initialize(): Promise<void> {
-        await this.reload();
+        await this.recompute();
     }
 
-    private async reload(): Promise<void> {
-        const primary = vscode.workspace.workspaceFolders?.[0];
-        if (!primary) {
-            this.costs = new Map();
-            this.recompute();
-            return;
-        }
-        const uri = vscode.Uri.joinPath(primary.uri, DEFINITIONS_FILE);
-        try {
-            const bytes = await vscode.workspace.fs.readFile(uri);
-            const source = Buffer.from(bytes).toString('utf8');
-            this.costs = parseRamCosts(source);
-            this.outputChannel.appendLine(`RAM cost table loaded: ${this.costs.size} Netscript methods`);
-        } catch {
-            // No d.ts yet — the user hasn't connected to Bitburner or the
-            // download hasn't completed. Silently clear so the status bar
-            // stays hidden until the file appears.
-            this.costs = new Map();
-        }
-        this.recompute();
-    }
-
-    private recompute(): void {
+    private async recompute(): Promise<void> {
+        const token = ++this.recomputeToken;
         const editor = vscode.window.activeTextEditor;
         if (!editor || !isScriptDocument(editor.document)) {
-            this.onUpdate([]);
+            this.onUpdate(undefined);
             return;
         }
-        const { entries } = computeScriptRamCost(editor.document.getText(), this.costs);
-        this.onUpdate(entries);
+        if (!this.wsServer.isConnected) {
+            this.onUpdate(undefined);
+            return;
+        }
+        let remotePath: string;
+        try {
+            remotePath = this.pathMapper.mapToRemote(editor.document.uri);
+        } catch {
+            // Outside the sync directory / primary workspace — no remote
+            // counterpart to ask about.
+            this.onUpdate(undefined);
+            return;
+        }
+        try {
+            const cost = await this.api.calculateRam(remotePath, this.config.targetServer);
+            if (token !== this.recomputeToken) {
+                return;
+            }
+            if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) {
+                this.onUpdate(undefined);
+                return;
+            }
+            this.onUpdate(cost);
+        } catch (err) {
+            if (token !== this.recomputeToken) {
+                return;
+            }
+            // Common cases: file not on server yet, parse error in the
+            // script, disconnected mid-request. All benign — hide the
+            // indicator and log for diagnostics.
+            this.outputChannel.appendLine(
+                `calculateRam(${remotePath}) failed: ${err instanceof Error ? err.message : err}`
+            );
+            this.onUpdate(undefined);
+        }
+    }
+
+    private activeRemotePath(): string | undefined {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || !isScriptDocument(editor.document)) {
+            return undefined;
+        }
+        try {
+            return this.pathMapper.mapToRemote(editor.document.uri);
+        } catch {
+            return undefined;
+        }
     }
 
     dispose(): void {
+        this.wsServer.off('connected', this.onConnected);
+        this.wsServer.off('disconnected', this.onDisconnected);
         for (const d of this.disposables) {
             d.dispose();
         }
@@ -113,6 +146,6 @@ function isScriptDocument(doc: vscode.TextDocument): boolean {
     if (dot < 0) {
         return false;
     }
-    // @ts-ignore
-    return SCRIPT_EXTENSIONS.includes(p.slice(dot));
+    const ext = p.slice(dot);
+    return (SCRIPT_EXTENSIONS as readonly string[]).includes(ext);
 }

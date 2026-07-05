@@ -108,6 +108,28 @@ suite('SyncEngine', () => {
             assert_1.strict.equal(output.lines.length, 1);
             assert_1.strict.match(output.lines[0], /Pushed: \/a\.js/);
         });
+        test('notifies onDidPush listeners with the remote path after success', async () => {
+            const { engine } = buildEngine();
+            _writeFile('/workspace/a.js', 'x');
+            const seen = [];
+            const sub = engine.onDidPush((remote) => { seen.push(remote); });
+            await engine.pushFile(Uri.file('/workspace/a.js'));
+            assert_1.strict.deepEqual(seen, ['/a.js']);
+            sub.dispose();
+            // After dispose, further pushes should not fire the listener.
+            _writeFile('/workspace/b.js', 'y');
+            await engine.pushFile(Uri.file('/workspace/b.js'));
+            assert_1.strict.deepEqual(seen, ['/a.js']);
+        });
+        test('does not fire onDidPush when the push itself fails', async () => {
+            const { engine, rpc } = buildEngine();
+            rpc.queueError('pushFile', new Error('boom'));
+            _writeFile('/workspace/a.js', 'x');
+            const seen = [];
+            engine.onDidPush((remote) => { seen.push(remote); });
+            await assert_1.strict.rejects(engine.pushFile(Uri.file('/workspace/a.js')), /boom/);
+            assert_1.strict.deepEqual(seen, []);
+        });
     });
     suite('syncAll', () => {
         test('warns and bails out when no files match', async () => {

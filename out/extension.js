@@ -105,7 +105,7 @@ function activate(context) {
     fileWatcher = new FileWatcher_1.FileWatcher(syncEngine, config);
     statusBar = new StatusBar_1.StatusBar();
     ramStatusBar = new RamStatusBar_1.RamStatusBar();
-    ramCostTracker = new RamCostTracker_1.RamCostTracker(outputChannel, (entries) => ramStatusBar.update(entries));
+    ramCostTracker = new RamCostTracker_1.RamCostTracker(outputChannel, (total) => ramStatusBar.update(total), api, config, wsServer, syncEngine);
     wsServer.on('stateChanged', (state) => {
         statusBar.update(state);
     });
@@ -209,7 +209,7 @@ function activate(context) {
         catch (err) {
             vscode.window.showErrorMessage(`Failed to download files: ${err}`);
         }
-    }), vscode.commands.registerCommand(RamStatusBar_1.SHOW_BREAKDOWN_COMMAND, () => (0, RamStatusBar_1.showRamCostBreakdown)(ramStatusBar)), outputChannel, statusBar, ramStatusBar, { dispose: () => ramCostTracker.dispose() }, { dispose: () => syncEngine.dispose() }, { dispose: () => fileWatcher.dispose() }, { dispose: () => rpcClient.dispose() }, 
+    }), outputChannel, statusBar, ramStatusBar, { dispose: () => ramCostTracker.dispose() }, { dispose: () => syncEngine.dispose() }, { dispose: () => fileWatcher.dispose() }, { dispose: () => rpcClient.dispose() }, 
     // Return the Promise so VS Code awaits port release on
     // reload/upgrade. Without this the next activation can race the
     // close callback and hit EADDRINUSE binding to the same port.
@@ -247,11 +247,10 @@ function activate(context) {
     // without waiting for the user to reconnect to the game. Fire-and-forget;
     // failures are logged inside the call.
     void syncEngine.ensureTypeDefinitionsSetup();
-    // First read of the RAM cost table. If NetscriptDefinitions.d.ts is
-    // already in the workspace (existing user, or the migration path just
-    // wrote it), the status bar becomes useful immediately; otherwise the
-    // file-watcher inside the tracker will populate it after the first
-    // download.
+    // First cost read at activation. If Bitburner is already connected
+    // (autoStart + a live tab), the tracker asks calculateRam for the
+    // active editor's file right away; otherwise it stays hidden until
+    // the WebSocket 'connected' event fires.
     void ramCostTracker.initialize();
 }
 async function maybeOpenSettingsOnFirstInstall(context) {
