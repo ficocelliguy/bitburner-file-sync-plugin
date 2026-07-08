@@ -39,14 +39,24 @@ const BitburnerApi_1 = require("../../api/BitburnerApi");
 const Configuration_1 = require("../../config/Configuration");
 const SyncEngine_1 = require("../../sync/SyncEngine");
 const RamCostTracker_1 = require("../../ram/RamCostTracker");
+const RamCost_1 = require("../../ram/RamCost");
 const helpers_1 = require("./helpers");
 const { Uri, _reset, _setWorkspaceFolders, _state, _writeFile } = vscodeMock;
 // Set the active editor without triggering the onDidChangeActiveTextEditor
 // listeners. Tests use this to seed state *before* building the tracker so
 // its constructor-time subscriptions don't fire a stray recompute that
 // consumes a queued RPC response.
-function seedActiveEditor(uri) {
-    _state.activeTextEditor = { document: { uri } };
+function seedActiveEditor(uri, text = '') {
+    _state.activeTextEditor = { document: { uri, getText: () => text } };
+}
+// Minimal stand-in for NetscriptCostRegistry. Only exposes what the tracker
+// touches — getCosts() for the fallback scan and onDidReload() for the
+// live-update subscription — so tests don't need a real d.ts on disk.
+function fakeRegistry(costs = new Map()) {
+    return {
+        getCosts: () => costs,
+        onDidReload: (_l) => ({ dispose: () => { } }),
+    };
 }
 function build(opts = {}) {
     const rpc = new helpers_1.FakeRpcClient();
@@ -59,7 +69,7 @@ function build(opts = {}) {
     const output = vscodeMock.window.createOutputChannel('test');
     const engine = new SyncEngine_1.SyncEngine(api, config, output);
     const updates = [];
-    const tracker = new RamCostTracker_1.RamCostTracker(output, (total) => updates.push(total), api, config, server, engine);
+    const tracker = new RamCostTracker_1.RamCostTracker(output, (total) => updates.push(total), api, config, server, engine, opts.registry ?? fakeRegistry());
     return { rpc, api, server, engine, config, output, updates, tracker };
 }
 suite('RamCostTracker', () => {
@@ -164,6 +174,72 @@ suite('RamCostTracker', () => {
         await (0, helpers_1.waitMs)(0);
         assert_1.strict.deepEqual(updates, [undefined, 2]);
         tracker.dispose();
+    });
+    suite('disconnected fallback via scraped cost table', () => {
+        test('reports scraped total for an ns-using script when disconnected', async () => {
+            seedActiveEditor(Uri.file('/workspace/a.js'), 'ns.hack("home"); ns.grow("home");');
+            const registry = fakeRegistry(new Map([['hack', 0.1], ['grow', 0.15]]));
+            const { tracker, updates, rpc } = build({ connected: false, registry });
+            await tracker.initialize();
+            // 0.1 + 0.15 + 1.6 base = 1.85
+            assert_1.strict.deepEqual(updates, [0.1 + 0.15 + RamCost_1.BASE_RAM_COST]);
+            assert_1.strict.equal(rpc.calls.length, 0, 'must not call calculateRam while disconnected');
+            tracker.dispose();
+        });
+        test('reports undefined when disconnected and the script has no ns identifiers', async () => {
+            seedActiveEditor(Uri.file('/workspace/a.js'), 'const x = 1; console.log(x);');
+            const registry = fakeRegistry(new Map([['hack', 0.1]]));
+            const { tracker, updates } = build({ connected: false, registry });
+            await tracker.initialize();
+            assert_1.strict.deepEqual(updates, [undefined]);
+            tracker.dispose();
+        });
+        test('reports undefined when disconnected and the registry is empty', async () => {
+            // No d.ts yet: even a script full of ns calls can't be scored.
+            seedActiveEditor(Uri.file('/workspace/a.js'), 'ns.hack("home");');
+            const { tracker, updates } = build({ connected: false });
+            await tracker.initialize();
+            assert_1.strict.deepEqual(updates, [undefined]);
+            tracker.dispose();
+        });
+        test('save while disconnected re-runs the local scan for the active editor', async () => {
+            const uri = Uri.file('/workspace/a.js');
+            seedActiveEditor(uri, 'ns.hack("home");');
+            const registry = fakeRegistry(new Map([['hack', 0.1], ['grow', 0.15]]));
+            const { tracker, updates } = build({ connected: false, registry });
+            await tracker.initialize();
+            // First: just hack — 0.1 + base
+            assert_1.strict.deepEqual(updates, [0.1 + RamCost_1.BASE_RAM_COST]);
+            // Simulate the user editing to add ns.grow, then saving.
+            _state.activeTextEditor = { document: { uri, getText: () => 'ns.hack("home"); ns.grow("home");' } };
+            vscodeMock._triggerSave(uri);
+            await (0, helpers_1.waitMs)(0);
+            assert_1.strict.deepEqual(updates, [0.1 + RamCost_1.BASE_RAM_COST, 0.1 + 0.15 + RamCost_1.BASE_RAM_COST]);
+            tracker.dispose();
+        });
+        test('registry reload re-runs the scan (fresh d.ts arrives after activation)', async () => {
+            const uri = Uri.file('/workspace/a.js');
+            seedActiveEditor(uri, 'ns.hack("home");');
+            // Track a single reload listener so the test can drive it directly.
+            let reloadListener;
+            const costs = new Map();
+            const registry = {
+                getCosts: () => costs,
+                onDidReload: (l) => {
+                    reloadListener = l;
+                    return { dispose: () => { reloadListener = undefined; } };
+                },
+            };
+            const { tracker, updates } = build({ connected: false, registry });
+            await tracker.initialize();
+            assert_1.strict.deepEqual(updates, [undefined]);
+            // Table arrives (extension downloaded the d.ts).
+            costs.set('hack', 0.1);
+            reloadListener?.();
+            await (0, helpers_1.waitMs)(0);
+            assert_1.strict.deepEqual(updates, [undefined, 0.1 + RamCost_1.BASE_RAM_COST]);
+            tracker.dispose();
+        });
     });
 });
 //# sourceMappingURL=RamCostTracker.test.js.map

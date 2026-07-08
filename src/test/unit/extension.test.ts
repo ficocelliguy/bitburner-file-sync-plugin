@@ -52,6 +52,7 @@ suite('extension activate()', () => {
             'bitburnerSync.getDefinitions',
             'bitburnerSync.downloadAll',
             'bitburnerSync.downloadSelectedFiles',
+            'bitburnerSync.showRamCostBreakdown',
         ];
         for (const name of expected) {
             assert.ok(_state.commands.has(name), `expected command ${name} to be registered`);
@@ -68,9 +69,9 @@ suite('extension activate()', () => {
         // primary first because it's constructed first in activate().
         assert.equal(_state.statusBarItems.length, 2);
         assert.equal(_state.statusBarItems[0].command, 'bitburnerSync.toggleServer');
-        // The RAM indicator has no click command — it just displays the
-        // cost reported by Bitburner's calculateRam RPC.
-        assert.equal(_state.statusBarItems[1].command, undefined);
+        // The RAM indicator's click opens the per-method breakdown scraped
+        // from NetscriptDefinitions.d.ts.
+        assert.equal(_state.statusBarItems[1].command, 'bitburnerSync.showRamCostBreakdown');
         disposeAll(ctx);
     });
 

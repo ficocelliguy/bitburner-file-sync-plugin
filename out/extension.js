@@ -46,6 +46,7 @@ const FileWatcher_1 = require("./sync/FileWatcher");
 const StatusBar_1 = require("./ui/StatusBar");
 const RamStatusBar_1 = require("./ui/RamStatusBar");
 const RamCostTracker_1 = require("./ram/RamCostTracker");
+const NetscriptCostRegistry_1 = require("./ram/NetscriptCostRegistry");
 let wsServer;
 let rpcClient;
 let api;
@@ -55,6 +56,7 @@ let fileWatcher;
 let statusBar;
 let ramStatusBar;
 let ramCostTracker;
+let netscriptCostRegistry;
 let outputChannel;
 // Persistence keys. Names live here so the two callers (the read in
 // activate() and the write after running once) can't drift apart.
@@ -105,7 +107,8 @@ function activate(context) {
     fileWatcher = new FileWatcher_1.FileWatcher(syncEngine, config);
     statusBar = new StatusBar_1.StatusBar();
     ramStatusBar = new RamStatusBar_1.RamStatusBar();
-    ramCostTracker = new RamCostTracker_1.RamCostTracker(outputChannel, (total) => ramStatusBar.update(total), api, config, wsServer, syncEngine);
+    netscriptCostRegistry = new NetscriptCostRegistry_1.NetscriptCostRegistry(outputChannel);
+    ramCostTracker = new RamCostTracker_1.RamCostTracker(outputChannel, (total) => ramStatusBar.update(total), api, config, wsServer, syncEngine, netscriptCostRegistry);
     wsServer.on('stateChanged', (state) => {
         statusBar.update(state);
     });
@@ -209,7 +212,7 @@ function activate(context) {
         catch (err) {
             vscode.window.showErrorMessage(`Failed to download files: ${err}`);
         }
-    }), outputChannel, statusBar, ramStatusBar, { dispose: () => ramCostTracker.dispose() }, { dispose: () => syncEngine.dispose() }, { dispose: () => fileWatcher.dispose() }, { dispose: () => rpcClient.dispose() }, 
+    }), vscode.commands.registerCommand(RamStatusBar_1.SHOW_BREAKDOWN_COMMAND, () => (0, RamStatusBar_1.showRamCostBreakdown)(netscriptCostRegistry)), outputChannel, statusBar, ramStatusBar, { dispose: () => netscriptCostRegistry.dispose() }, { dispose: () => ramCostTracker.dispose() }, { dispose: () => syncEngine.dispose() }, { dispose: () => fileWatcher.dispose() }, { dispose: () => rpcClient.dispose() }, 
     // Return the Promise so VS Code awaits port release on
     // reload/upgrade. Without this the next activation can race the
     // close callback and hit EADDRINUSE binding to the same port.
@@ -247,11 +250,12 @@ function activate(context) {
     // without waiting for the user to reconnect to the game. Fire-and-forget;
     // failures are logged inside the call.
     void syncEngine.ensureTypeDefinitionsSetup();
-    // First cost read at activation. If Bitburner is already connected
-    // (autoStart + a live tab), the tracker asks calculateRam for the
-    // active editor's file right away; otherwise it stays hidden until
-    // the WebSocket 'connected' event fires.
-    void ramCostTracker.initialize();
+    // Load the local cost table first so the tracker's initial recompute
+    // (below) can already use it for the disconnected fallback if a d.ts
+    // is present. The registry also fires an `onDidReload` the tracker is
+    // subscribed to, so a later refresh (fresh download, external edit)
+    // still propagates.
+    void netscriptCostRegistry.initialize().then(() => ramCostTracker.initialize());
 }
 async function maybeOpenSettingsOnFirstInstall(context) {
     if (context.globalState.get(FIRST_INSTALL_KEY, false)) {

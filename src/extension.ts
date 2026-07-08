@@ -7,8 +7,9 @@ import { Configuration } from './config/Configuration';
 import { SyncEngine } from './sync/SyncEngine';
 import { FileWatcher } from './sync/FileWatcher';
 import { StatusBar } from './ui/StatusBar';
-import { RamStatusBar } from './ui/RamStatusBar';
+import { RamStatusBar, SHOW_BREAKDOWN_COMMAND, showRamCostBreakdown } from './ui/RamStatusBar';
 import { RamCostTracker } from './ram/RamCostTracker';
+import { NetscriptCostRegistry } from './ram/NetscriptCostRegistry';
 
 let wsServer: WebSocketServer;
 let rpcClient: JsonRpcClient;
@@ -19,6 +20,7 @@ let fileWatcher: FileWatcher;
 let statusBar: StatusBar;
 let ramStatusBar: RamStatusBar;
 let ramCostTracker: RamCostTracker;
+let netscriptCostRegistry: NetscriptCostRegistry;
 let outputChannel: vscode.OutputChannel;
 
 // Persistence keys. Names live here so the two callers (the read in
@@ -76,6 +78,7 @@ export function activate(context: vscode.ExtensionContext): void {
     fileWatcher = new FileWatcher(syncEngine, config);
     statusBar = new StatusBar();
     ramStatusBar = new RamStatusBar();
+    netscriptCostRegistry = new NetscriptCostRegistry(outputChannel);
     ramCostTracker = new RamCostTracker(
         outputChannel,
         (total) => ramStatusBar.update(total),
@@ -83,6 +86,7 @@ export function activate(context: vscode.ExtensionContext): void {
         config,
         wsServer,
         syncEngine,
+        netscriptCostRegistry,
     );
 
     wsServer.on('stateChanged', (state) => {
@@ -196,9 +200,11 @@ export function activate(context: vscode.ExtensionContext): void {
                 vscode.window.showErrorMessage(`Failed to download files: ${err}`);
             }
         }),
+        vscode.commands.registerCommand(SHOW_BREAKDOWN_COMMAND, () => showRamCostBreakdown(netscriptCostRegistry)),
         outputChannel,
         statusBar,
         ramStatusBar,
+        { dispose: () => netscriptCostRegistry.dispose() },
         { dispose: () => ramCostTracker.dispose() },
         { dispose: () => syncEngine.dispose() },
         { dispose: () => fileWatcher.dispose() },
@@ -248,11 +254,12 @@ export function activate(context: vscode.ExtensionContext): void {
     // failures are logged inside the call.
     void syncEngine.ensureTypeDefinitionsSetup();
 
-    // First cost read at activation. If Bitburner is already connected
-    // (autoStart + a live tab), the tracker asks calculateRam for the
-    // active editor's file right away; otherwise it stays hidden until
-    // the WebSocket 'connected' event fires.
-    void ramCostTracker.initialize();
+    // Load the local cost table first so the tracker's initial recompute
+    // (below) can already use it for the disconnected fallback if a d.ts
+    // is present. The registry also fires an `onDidReload` the tracker is
+    // subscribed to, so a later refresh (fresh download, external edit)
+    // still propagates.
+    void netscriptCostRegistry.initialize().then(() => ramCostTracker.initialize());
 }
 
 async function maybeOpenSettingsOnFirstInstall(context: vscode.ExtensionContext): Promise<void> {

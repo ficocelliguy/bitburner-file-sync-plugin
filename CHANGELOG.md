@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.1.2
+- Added additional static ram cost calc based on scraping NetscriptDefinitions.d.ts for the listed costs. Used when not connected to bitburner
+- Added a breakdown of each ram-costing ns method found when you click the ram estimate at the bottom of the editor
+
 ## 0.1.1
 - Added static RAM cost estimate for the active script in the status bar. Click for a per-method breakdown!
 - Added a periodic liveness ping to the connected Bitburner instance. A second tab now only takes over the connection if the current one has gone stale, so a second Bitburner tab can't kick a working session
