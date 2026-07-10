@@ -38,6 +38,7 @@ const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
 const minimatch_1 = require("minimatch");
 const PathMapper_1 = require("./PathMapper");
+const BundledReactTypes_1 = require("./BundledReactTypes");
 // Paths that are never appropriate to push to Bitburner, regardless of user
 // config. Kept here (not in the user-overridable `bitburnerSync.exclude`)
 // because VS Code's settings UI replaces the whole array on edit — surfacing
@@ -85,21 +86,12 @@ class SyncEngine {
     // know when to ask Bitburner for the file's RAM cost — asking on save
     // alone would race the debounced push and return the pre-save number.
     pushListeners = [];
-    // Absolute filesystem path to the directory holding the extension's
-    // bundled @types packages (dist/types). Used to construct absolute
-    // `paths` entries in user tsconfigs that resolve `react`/`react-dom`
-    // to the shipped copies instead of requiring the user to install
-    // anything. Undefined when the consumer (e.g. tests) doesn't need
-    // bundled types; in that case the shim falls back to typing
-    // React/ReactDOM as `any`.
-    bundledTypesDir;
-    constructor(api, config, outputChannel, bundledTypesDir, memento) {
+    constructor(api, config, outputChannel, memento) {
         this.api = api;
         this.config = config;
         this.memento = memento;
         this.pathMapper = new PathMapper_1.PathMapper(config);
         this.outputChannel = outputChannel;
-        this.bundledTypesDir = bundledTypesDir;
     }
     async pushFile(uri) {
         // Honor the documented "sync nothing" opt-out — fileExtensions: []
@@ -780,13 +772,10 @@ class SyncEngine {
             this.log(`Skipped ${GLOBALS_FILE}: no top-level exports parsed from ${DEFINITIONS_FILE}`);
             return;
         }
-        const body = renderGlobalsShim(names, this.bundledTypesDir !== undefined);
+        const body = renderGlobalsShim(names);
         const uri = vscode.Uri.joinPath(rootUri, GLOBALS_FILE);
         await vscode.workspace.fs.writeFile(uri, Buffer.from(body));
-        const reactNote = this.bundledTypesDir !== undefined
-            ? ', React/ReactDOM typed via bundled @types'
-            : ', React/ReactDOM typed as any';
-        this.log(`Wrote ${GLOBALS_FILE} (${names.length} Netscript types globalized${reactNote})`);
+        this.log(`Wrote ${GLOBALS_FILE} (${names.length} Netscript types globalized, React/ReactDOM inlined)`);
     }
     async ensureTsConfig(rootUri) {
         const tsconfigUri = vscode.Uri.joinPath(rootUri, 'tsconfig.json');
@@ -878,27 +867,18 @@ class SyncEngine {
                 ['@/*']: [syncRoot],
             };
         }
-        // `react` and `react-dom` are *owned*: their values are absolute
-        // paths into the installed extension directory, which moves on
-        // every extension upgrade. We always rewrite them to the current
-        // location so users don't end up with stale paths after upgrades.
-        // Users who want their own React types should install @types/react
-        // and remove these entries — we'll add them back, but that's the
-        // signal that we manage them.
-        const ownedPaths = {};
-        if (this.bundledTypesDir !== undefined) {
-            // Use forward slashes in tsconfig paths even on Windows. TS's
-            // path resolver handles both, but forward slashes match the
-            // convention TS itself emits and avoid surprising users who
-            // read the file.
-            const norm = this.bundledTypesDir.replace(/\\/g, '/');
-            ownedPaths['react'] = [`${norm}/react`];
-            ownedPaths['react-dom'] = [`${norm}/react-dom`];
-        }
+        // `react` / `react-dom` used to be add-always entries pointing at
+        // absolute paths inside the installed extension directory. That
+        // directory is versioned (`.vscode/extensions/…-0.1.2/…`), so every
+        // extension upgrade turned every user's paths into dangling
+        // pointers. Types now ship inline in NetscriptGlobals.d.ts, so we
+        // no longer add these entries — and legacy ones get scrubbed
+        // below via `pathsToRemove`.
+        const pathsToRemove = ['react', 'react-dom'];
         return {
             files: [DEFINITIONS_FILE, GLOBALS_FILE],
             paths: defaultPaths,
-            ownedPaths,
+            pathsToRemove,
             // Compiler options the extension *adds if missing*. We never
             // overwrite a user-set value, so a custom `jsx` mode survives.
             // `jsx: "react"` matches the Bitburner runtime, which uses the
@@ -928,7 +908,6 @@ class SyncEngine {
                     ...wanted.paths,
                     '*': [syncRoot],
                     '/*': [syncRoot],
-                    ...wanted.ownedPaths,
                 },
             },
             include: ['**/*'],
@@ -945,8 +924,10 @@ class SyncEngine {
         this.log(`WARN: ${message}`);
         this.log('Suggested tsconfig.json entries:');
         this.log(`    "files": ${JSON.stringify(wanted.files)}`);
-        const mergedPaths = { ...wanted.paths, ...wanted.ownedPaths };
-        this.log(`    "compilerOptions": { "paths": ${JSON.stringify(mergedPaths)}, ${Object.entries(wanted.compilerOptions).map(([k, v]) => `"${k}": ${JSON.stringify(v)}`).join(', ')} }`);
+        this.log(`    "compilerOptions": { "paths": ${JSON.stringify(wanted.paths)}, ${Object.entries(wanted.compilerOptions).map(([k, v]) => `"${k}": ${JSON.stringify(v)}`).join(', ')} }`);
+        if (wanted.pathsToRemove.length > 0) {
+            this.log(`    Also remove any stale entries from "compilerOptions.paths": ${JSON.stringify(wanted.pathsToRemove)} (they used to point into the extension install directory and break on upgrade — React/ReactDOM types now live in ${GLOBALS_FILE}).`);
+        }
         this.log('See the Troubleshooting section of the README for a full example.');
         const open = 'Open tsconfig.json';
         const show = 'Show Instructions';
@@ -1128,35 +1109,21 @@ function extractTopLevelExportNames(source) {
     return names;
 }
 // Render the NetscriptGlobals.d.ts shim that re-exports the d.ts's top-level
-// types into the global scope, plus the React/ReactDOM runtime globals that
+// types into the global scope, plus the React / ReactDOM runtime globals that
 // Bitburner exposes implicitly. Generated content — never hand-edited.
 //
-// When `hasBundledReactTypes` is true the extension's tsconfig.paths alias
-// resolves `react` and `react-dom` to copies of @types/react@^17 and
-// @types/react-dom@^17 bundled with the extension. The shim then types
-// `React` and `ReactDOM` via `typeof import("react"|"react-dom")` for
-// full IntelliSense. When false, they fall back to `any` — used by tests
-// that don't ship bundled types and as a defensive fallback.
-function renderGlobalsShim(names, hasBundledReactTypes) {
+// The React / ReactDOM / JSX namespaces are inlined via `declare global {
+// namespace React { … } … }` (see BundledReactTypes.ts). A global namespace
+// produces both a type and a runtime value, so scripts can reach for
+// `React.useState(...)` or `React.Component` directly without an import.
+// Wrapping in `declare global` is load-bearing here: NetscriptGlobals.d.ts
+// is a module (it has an `import` and `export {}`), so a bare `declare
+// namespace React` would create a module-local React instead of the global
+// the Bitburner runtime exposes. Ambient module re-exports for "react" /
+// "react-dom" live at the top-level of the file — TypeScript disallows
+// `declare module "…"` inside `declare global`.
+function renderGlobalsShim(names) {
     const defsModuleSpecifier = './' + DEFINITIONS_FILE.replace(/\.d\.ts$/, '');
-    const reactDecl = hasBundledReactTypes
-        ? [
-            '    // Bitburner runtime globals — exposed by the game, not imported.',
-            '    // Typed via the @types/react@^17 / @types/react-dom@^17 copies that',
-            '    // ship with the extension (see tsconfig.compilerOptions.paths).',
-            '    const React: typeof import("react");',
-            '    const ReactDOM: typeof import("react-dom");',
-        ]
-        : [
-            '    // Bitburner runtime globals — exposed by the game, not imported.',
-            '    // eslint-disable-next-line @typescript-eslint/no-explicit-any',
-            '    const React: any;',
-            '    // eslint-disable-next-line @typescript-eslint/no-explicit-any',
-            '    const ReactDOM: any;',
-        ];
-    const reactHeaderNote = hasBundledReactTypes
-        ? '// React and ReactDOM are also declared as globals here, typed via the bundled\n// @types/react@^17 / @types/react-dom@^17 copies shipped with the extension.'
-        : '// React and ReactDOM are also declared as globals here because the Bitburner\n// runtime exposes them implicitly. Typed as `any` — install @types/react and\n// override these declarations for stricter typing.';
     const lines = [
         '// AUTO-GENERATED by the Bitburner File Sync extension. DO NOT EDIT.',
         '//',
@@ -1165,15 +1132,22 @@ function renderGlobalsShim(names, hasBundledReactTypes) {
         `// below is regenerated each time \`${DEFINITIONS_FILE}\` is downloaded, so it`,
         '// stays in sync as Bitburner adds APIs.',
         '//',
-        ...reactHeaderNote.split('\n'),
+        '// React and ReactDOM are also declared globally here because the Bitburner',
+        '// runtime exposes them implicitly. Their types are inlined below — a curated',
+        '// subset covering hooks, components, refs, memo/forwardRef/lazy, the event',
+        '// object hierarchy, HTMLAttributes, and the JSX intrinsic-element map. Users',
+        '// who need stricter typing can install @types/react into their workspace and',
+        '// let module augmentation replace these declarations.',
         '',
         `import type * as _NS from "${defsModuleSpecifier}";`,
         '',
         'declare global {',
         ...names.map(n => `    type ${n} = _NS.${n};`),
         '',
-        ...reactDecl,
+        BundledReactTypes_1.BUNDLED_REACT_NAMESPACES,
         '}',
+        '',
+        BundledReactTypes_1.BUNDLED_REACT_MODULE_ALIASES,
         '',
         'export {};',
         '',
@@ -1227,12 +1201,15 @@ function mergeWantedIntoTsconfig(cfg, wanted) {
             changed = true;
         }
     }
-    // ownedPaths overwrite unconditionally — these are absolute paths
-    // pointing into the extension directory, which changes on upgrade.
-    for (const [alias, target] of Object.entries(wanted.ownedPaths)) {
-        const existing = pathsObj[alias];
-        if (!Array.isArray(existing) || existing.length !== target.length || existing.some((v, i) => v !== target[i])) {
-            pathsObj[alias] = target;
+    // Actively scrub aliases we no longer manage. The extension previously
+    // wrote absolute paths for `react` / `react-dom` pointing at the
+    // versioned extension install directory; those entries become dangling
+    // pointers on every upgrade. Removing them here means an upgrading
+    // user doesn't have to hand-edit their tsconfig — and the React /
+    // ReactDOM types now come from NetscriptGlobals.d.ts anyway.
+    for (const alias of wanted.pathsToRemove) {
+        if (alias in pathsObj) {
+            delete pathsObj[alias];
             changed = true;
         }
     }
@@ -1272,11 +1249,11 @@ function tsconfigHasAllWanted(cfg, wanted) {
             return false;
         }
     }
-    // Owned paths must match the current target exactly (i.e., no stale
-    // path left over from a previous extension install location).
-    for (const [alias, target] of Object.entries(wanted.ownedPaths)) {
-        const existing = pathsObj[alias];
-        if (!Array.isArray(existing) || existing.length !== target.length || existing.some((v, i) => v !== target[i])) {
+    // Any alias slated for removal that still exists means the JSONC file
+    // is out of date — we can't rewrite it safely, so the caller warns
+    // the user to hand-edit it out.
+    for (const alias of wanted.pathsToRemove) {
+        if (alias in pathsObj) {
             return false;
         }
     }

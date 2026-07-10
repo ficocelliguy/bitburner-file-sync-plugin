@@ -46,7 +46,7 @@ function buildEngine(opts = {}) {
     const config = new Configuration_1.Configuration();
     const output = vscodeMock.window.createOutputChannel('test');
     const memento = opts.memento ?? _makeMemento();
-    const engine = new SyncEngine_1.SyncEngine(api, config, output, opts.bundledTypesDir, memento);
+    const engine = new SyncEngine_1.SyncEngine(api, config, output, memento);
     return { engine, api, rpc, output, memento };
 }
 suite('SyncEngine', () => {
@@ -1398,9 +1398,6 @@ suite('SyncEngine', () => {
             assert_1.strict.match(onDisk, /^export interface AutocompleteData \{/m);
         });
         test('generates NetscriptGlobals.d.ts with every top-level type (including patched ones) aliased into the global scope', async () => {
-            // Without a bundledTypesDir the shim falls back to typing React /
-            // ReactDOM as `any` so editor errors don't block scripts without
-            // a workspace-installed @types/react.
             const { engine, rpc } = buildEngine();
             rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
@@ -1414,41 +1411,55 @@ suite('SyncEngine', () => {
             assert_1.strict.match(shim, /type NS = _NS\.NS;/);
             assert_1.strict.match(shim, /type ScriptArg = _NS\.ScriptArg;/);
             assert_1.strict.match(shim, /type AutocompleteData = _NS\.AutocompleteData;/);
-            // React and ReactDOM are also globally available because the
-            // Bitburner runtime exposes them.
-            assert_1.strict.match(shim, /const React: any;/);
-            assert_1.strict.match(shim, /const ReactDOM: any;/);
             // Module-marker so the file is treated as a module (so `declare global` works).
             assert_1.strict.match(shim, /export \{\};/);
         });
-        test('with bundledTypesDir set, the shim types React/ReactDOM via the bundled @types', async () => {
-            // Production path: the extension passes its own dist/types/
-            // directory, which holds copies of @types/react@^17 and
-            // @types/react-dom@^17. The shim then uses the real types.
-            const { engine, rpc } = buildEngine({ bundledTypesDir: '/ext/dist/types' });
+        test('inlines a React namespace and re-exports it as the "react" module', async () => {
+            // Types now ship *inside* NetscriptGlobals.d.ts as global
+            // `namespace React { … }` (wrapped in `declare global`) + ambient
+            // `declare module "react" { export = React; }` blocks. That
+            // means the workspace is self-contained: an extension upgrade
+            // never leaves the user with a stale absolute path pointing
+            // into an old install dir (the bug the old `bundledTypesDir`
+            // mechanism suffered from).
+            const { engine, rpc } = buildEngine();
             rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             const shim = _readFile('/workspace/NetscriptGlobals.d.ts');
             assert_1.strict.ok(shim);
-            assert_1.strict.match(shim, /const React: typeof import\("react"\);/);
-            assert_1.strict.match(shim, /const ReactDOM: typeof import\("react-dom"\);/);
-            assert_1.strict.doesNotMatch(shim, /const React: any;/);
+            // Namespaces live inside `declare global { … }` so they're
+            // visible as globals from the user's .ts/.tsx files.
+            assert_1.strict.match(shim, /declare global \{[\s\S]*namespace React \{/);
+            assert_1.strict.match(shim, /namespace ReactDOM \{/);
+            assert_1.strict.match(shim, /namespace JSX \{/);
+            // Ambient module re-exports at the top level so `import { NS }
+            // from "@ns"` (which transitively imports from "react") resolves.
+            assert_1.strict.match(shim, /declare module "react" \{\s*export = React;\s*\}/);
+            assert_1.strict.match(shim, /declare module "react-dom" \{\s*export = ReactDOM;\s*\}/);
+            // A handful of the surface everyone actually uses — hooks,
+            // component classes, HTMLAttributes.
+            assert_1.strict.match(shim, /function useState/);
+            assert_1.strict.match(shim, /class Component/);
+            assert_1.strict.match(shim, /interface HTMLAttributes/);
         });
-        test('with bundledTypesDir set, tsconfig gets absolute react/react-dom path aliases', async () => {
-            const { engine, rpc } = buildEngine({ bundledTypesDir: '/ext/dist/types' });
+        test('does not add react/react-dom paths pointing at the extension install dir', async () => {
+            // The old behavior wrote absolute paths into tsconfig that broke
+            // on every extension upgrade. Types now live in
+            // NetscriptGlobals.d.ts, so tsconfig should be clean.
+            const { engine, rpc } = buildEngine();
             rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
             assert_1.strict.deepEqual(parsed.compilerOptions.paths['@ns'], ['NetscriptDefinitions.d.ts']);
-            // Absolute paths into the extension dir.
-            assert_1.strict.deepEqual(parsed.compilerOptions.paths['react'], ['/ext/dist/types/react']);
-            assert_1.strict.deepEqual(parsed.compilerOptions.paths['react-dom'], ['/ext/dist/types/react-dom']);
+            assert_1.strict.equal(parsed.compilerOptions.paths['react'], undefined);
+            assert_1.strict.equal(parsed.compilerOptions.paths['react-dom'], undefined);
         });
-        test('with bundledTypesDir, stale react paths from a prior extension install get rewritten', async () => {
-            // Simulates the upgrade case: an older extension install wrote
-            // `react` pointing at /old/ext/.... The new install must
-            // overwrite that to its own current location, not leave the
-            // dangling pointer.
+        test('scrubs stale react/react-dom paths left by prior extension installs', async () => {
+            // Existing users who upgrade past this fix will have `react` /
+            // `react-dom` entries pointing at `.…/bitburner-file-sync-plugin-0.1.2/dist/types/…`
+            // from an earlier extension install. Those are dangling — the
+            // upgrade removes the old install dir — so we actively delete
+            // them so IntelliSense goes back to using our inlined types.
             _writeFile('/workspace/tsconfig.json', JSON.stringify({
                 compilerOptions: {
                     jsx: 'react',
@@ -1460,21 +1471,14 @@ suite('SyncEngine', () => {
                 },
                 files: ['NetscriptDefinitions.d.ts', 'NetscriptGlobals.d.ts'],
             }));
-            const { engine, rpc } = buildEngine({ bundledTypesDir: '/new/ext/dist/types' });
+            const { engine, rpc } = buildEngine();
             rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
             await engine.downloadDefinitions();
             const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
-            assert_1.strict.deepEqual(parsed.compilerOptions.paths['react'], ['/new/ext/dist/types/react']);
-            assert_1.strict.deepEqual(parsed.compilerOptions.paths['react-dom'], ['/new/ext/dist/types/react-dom']);
+            assert_1.strict.equal(parsed.compilerOptions.paths['react'], undefined);
+            assert_1.strict.equal(parsed.compilerOptions.paths['react-dom'], undefined);
             // @ns is add-if-missing, so it's untouched.
             assert_1.strict.deepEqual(parsed.compilerOptions.paths['@ns'], ['NetscriptDefinitions.d.ts']);
-        });
-        test('on Windows-style bundledTypesDir, paths are normalized to forward slashes', async () => {
-            const { engine, rpc } = buildEngine({ bundledTypesDir: 'C:\\Users\\u\\.vscode\\extensions\\bitburner-sync\\dist\\types' });
-            rpc.queueResponse('getDefinitionFile', SAMPLE_DEFS);
-            await engine.downloadDefinitions();
-            const parsed = JSON.parse(_readFile('/workspace/tsconfig.json'));
-            assert_1.strict.deepEqual(parsed.compilerOptions.paths['react'], ['C:/Users/u/.vscode/extensions/bitburner-sync/dist/types/react']);
         });
         test('the d.ts patcher is idempotent across re-downloads', async () => {
             // Pre-patched content (already `export interface Foo`) should not

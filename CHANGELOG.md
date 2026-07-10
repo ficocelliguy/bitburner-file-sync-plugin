@@ -1,5 +1,8 @@
 # Change Log
 
+## 0.1.3
+- React / ReactDOM types are now inlined into `NetscriptGlobals.d.ts` in the workspace instead of referenced via absolute paths into the extension install directory. Previously every extension upgrade broke React IntelliSense until you re-ran `Bitburner: Download Type Definitions`, because the `tsconfig.json` `paths` entries pointed at a versioned folder (`.…/bitburner-file-sync-plugin-0.1.2/…`) that stopped existing after the upgrade. Upgrading users get the stale `react` / `react-dom` `paths` entries scrubbed automatically the next time the extension writes `tsconfig.json`.
+
 ## 0.1.2
 - Added additional static ram cost calc based on scraping NetscriptDefinitions.d.ts for the listed costs. Used when not connected to bitburner
 - Added a breakdown of each ram-costing ns method found when you click the ram estimate at the bottom of the editor

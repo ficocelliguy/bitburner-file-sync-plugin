@@ -35,7 +35,6 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
-const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
 const WebSocketServer_1 = require("./server/WebSocketServer");
 const JsonRpcClient_1 = require("./server/JsonRpcClient");
@@ -98,12 +97,7 @@ function activate(context) {
     wsServer = new WebSocketServer_1.WebSocketServer();
     rpcClient = new JsonRpcClient_1.JsonRpcClient(wsServer);
     api = new BitburnerApi_1.BitburnerApi(rpcClient, config.targetServer);
-    // dist/types/ is populated by esbuild's copyBundledTypes step. Pass
-    // the absolute path so user tsconfigs can resolve `react` / `react-dom`
-    // imports against the bundled @types copies instead of forcing each
-    // user to install them.
-    const bundledTypesDir = path.join(context.extensionPath, 'dist', 'types');
-    syncEngine = new SyncEngine_1.SyncEngine(api, config, outputChannel, bundledTypesDir, context.workspaceState);
+    syncEngine = new SyncEngine_1.SyncEngine(api, config, outputChannel, context.workspaceState);
     fileWatcher = new FileWatcher_1.FileWatcher(syncEngine, config);
     statusBar = new StatusBar_1.StatusBar();
     ramStatusBar = new RamStatusBar_1.RamStatusBar();

@@ -1,4 +1,3 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { WebSocketServer } from './server/WebSocketServer';
 import { JsonRpcClient } from './server/JsonRpcClient';
@@ -69,12 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
     wsServer = new WebSocketServer();
     rpcClient = new JsonRpcClient(wsServer);
     api = new BitburnerApi(rpcClient, config.targetServer);
-    // dist/types/ is populated by esbuild's copyBundledTypes step. Pass
-    // the absolute path so user tsconfigs can resolve `react` / `react-dom`
-    // imports against the bundled @types copies instead of forcing each
-    // user to install them.
-    const bundledTypesDir = path.join(context.extensionPath, 'dist', 'types');
-    syncEngine = new SyncEngine(api, config, outputChannel, bundledTypesDir, context.workspaceState);
+    syncEngine = new SyncEngine(api, config, outputChannel, context.workspaceState);
     fileWatcher = new FileWatcher(syncEngine, config);
     statusBar = new StatusBar();
     ramStatusBar = new RamStatusBar();

@@ -13,8 +13,5 @@
 		// "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
 		// "noUnusedParameters": true,  /* Report errors on unused parameters. */
 	},
-	// dist/types/ holds the bundled @types/react copies that ship with the
-	// .vsix; it's a duplicate of node_modules/@types/react and would cause
-	// "duplicate identifier" errors if TS tried to type-check both.
 	"exclude": ["dist", "out", "node_modules"]
 }
